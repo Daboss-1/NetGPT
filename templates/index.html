@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang='en'>
+
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>NetGPT Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4efe8;
+            --bg-2: #e2e8f0;
+            --panel: rgba(255, 255, 255, 0.72);
+            --panel-strong: rgba(255, 255, 255, 0.92);
+            --text: #172033;
+            --muted: #607089;
+            --accent: #0f766e;
+            --accent-2: #ea580c;
+            --border: rgba(23, 32, 51, 0.10);
+            --shadow: 0 24px 80px rgba(15, 23, 42, 0.14);
+            --radius-xl: 28px;
+            --radius-lg: 20px;
+            --radius-md: 14px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            min-height: 100%;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Space Grotesk', sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 34%),
+                radial-gradient(circle at top right, rgba(234, 88, 12, 0.14), transparent 30%),
+                linear-gradient(135deg, var(--bg) 0%, #f8fafc 55%, var(--bg-2) 100%);
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.24) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.24) 1px, transparent 1px);
+            background-size: 32px 32px;
+            mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.24), transparent 75%);
+            pointer-events: none;
+        }
+
+        .app {
+            position: relative;
+            max-width: 1240px;
+            margin: 0 auto;
+            padding: 28px;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr);
+            gap: 22px;
+            align-items: stretch;
+            margin-bottom: 22px;
+        }
+
+        .brand-panel,
+        .info-panel,
+        .composer,
+        .output-panel {
+            background: var(--panel);
+            backdrop-filter: blur(18px);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .brand-panel {
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .brand-panel::after {
+            content: '';
+            position: absolute;
+            width: 320px;
+            height: 320px;
+            right: -110px;
+            top: -120px;
+            background: radial-gradient(circle, rgba(15, 118, 110, 0.18), transparent 68%);
+            pointer-events: none;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(15, 118, 110, 0.10);
+            color: var(--accent);
+            font-size: 0.84rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 18px;
+        }
+
+        .eyebrow::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--accent);
+            box-shadow: 0 0 0 6px rgba(15, 118, 110, 0.12);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(2.4rem, 5vw, 4.8rem);
+            line-height: 0.94;
+            letter-spacing: -0.06em;
+        }
+
+        .headline {
+            max-width: 60ch;
+            margin: 16px 0 0;
+            color: var(--muted);
+            font-size: 1.05rem;
+            line-height: 1.7;
+        }
+
+        .info-panel {
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            justify-content: space-between;
+        }
+
+        .stat-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .stat {
+            border-radius: 18px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.56);
+            border: 1px solid rgba(23, 32, 51, 0.08);
+        }
+
+        .stat span {
+            display: block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .stat strong {
+            font-size: 1rem;
+            line-height: 1.4;
+        }
+
+        .status {
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(15, 118, 110, 0.13), rgba(234, 88, 12, 0.10));
+            border: 1px solid rgba(23, 32, 51, 0.08);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 22px;
+        }
+
+        .composer,
+        .output-panel {
+            border-radius: var(--radius-xl);
+            padding: 22px;
+        }
+
+        .section-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 14px;
+            color: var(--muted);
+            font-size: 0.86rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .section-label span {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .select-wrap,
+        .field,
+        textarea,
+        #imageInput {
+            width: 100%;
+        }
+
+        .select-wrap {
+            position: relative;
+        }
+
+        .select-wrap::after {
+            content: '▾';
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--muted);
+            pointer-events: none;
+        }
+
+        select,
+        textarea,
+        input[type='file'] {
+            font: inherit;
+        }
+
+        select {
+            appearance: none;
+            border: 1px solid rgba(23, 32, 51, 0.12);
+            background: var(--panel-strong);
+            color: var(--text);
+            border-radius: 16px;
+            padding: 14px 44px 14px 16px;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        }
+
+        .help {
+            margin: 12px 0 0;
+            font-size: 0.96rem;
+            line-height: 1.65;
+            color: var(--muted);
+        }
+
+        .field {
+            margin-top: 16px;
+        }
+
+        #imageInput {
+            display: block;
+            padding: 13px 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(23, 32, 51, 0.12);
+            background: rgba(255, 255, 255, 0.82);
+            margin-bottom: 16px;
+        }
+
+        textarea {
+            min-height: 230px;
+            resize: vertical;
+            border-radius: 20px;
+            border: 1px solid rgba(23, 32, 51, 0.12);
+            background: rgba(255, 255, 255, 0.88);
+            padding: 18px;
+            color: var(--text);
+            line-height: 1.75;
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07);
+        }
+
+        textarea::placeholder {
+            color: #8a97ab;
+        }
+
+        textarea:focus,
+        select:focus,
+        input[type='file']:focus {
+            outline: none;
+            border-color: rgba(15, 118, 110, 0.45);
+            box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+        }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .meta {
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        button {
+            appearance: none;
+            border: 0;
+            border-radius: 999px;
+            padding: 14px 22px;
+            background: linear-gradient(135deg, var(--accent), #155e75);
+            color: white;
+            font: inherit;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            box-shadow: 0 16px 30px rgba(15, 118, 110, 0.25);
+            cursor: pointer;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 20px 36px rgba(15, 118, 110, 0.30);
+            filter: brightness(1.03);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .output-panel {
+            min-height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .thinking-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 12px auto;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(23, 32, 51, 0.10);
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--muted);
+            font-size: 0.86rem;
+            opacity: 0;
+            transform: translateY(-4px);
+            transition: opacity 0.18s ease, transform 0.18s ease;
+            pointer-events: none;
+        }
+
+        .thinking-indicator.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .thinking-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+
+        .thinking-dots span {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: var(--accent);
+            animation: pulse 1.2s infinite ease-in-out;
+        }
+
+        .thinking-dots span:nth-child(2) {
+            animation-delay: 0.16s;
+        }
+
+        .thinking-dots span:nth-child(3) {
+            animation-delay: 0.32s;
+        }
+
+        @keyframes pulse {
+            0%, 80%, 100% {
+                transform: translateY(0);
+                opacity: 0.35;
+            }
+
+            40% {
+                transform: translateY(-3px);
+                opacity: 1;
+            }
+        }
+
+        #responseOutput {
+            flex: 1;
+            min-height: 380px;
+            margin: 0;
+            border-radius: 22px;
+            border: 1px solid rgba(23, 32, 51, 0.10);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.90), rgba(255, 255, 255, 0.74)),
+                radial-gradient(circle at top right, rgba(15, 118, 110, 0.06), transparent 26%);
+            padding: 20px;
+            line-height: 1.75;
+            color: #0f172a;
+            overflow: auto;
+        }
+
+        #responseOutput p,
+        #responseOutput ul,
+        #responseOutput ol,
+        #responseOutput blockquote,
+        #responseOutput h1,
+        #responseOutput h2,
+        #responseOutput h3,
+        #responseOutput h4,
+        #responseOutput h5,
+        #responseOutput h6,
+        #responseOutput pre,
+        #responseOutput .math-block {
+            margin: 0 0 16px;
+        }
+
+        #responseOutput h1,
+        #responseOutput h2,
+        #responseOutput h3,
+        #responseOutput h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            color: #0f172a;
+        }
+
+        #responseOutput h1 {
+            font-size: 1.85rem;
+        }
+
+        #responseOutput h2 {
+            font-size: 1.5rem;
+        }
+
+        #responseOutput h3 {
+            font-size: 1.2rem;
+        }
+
+        #responseOutput strong {
+            font-weight: 700;
+        }
+
+        #responseOutput em {
+            font-style: italic;
+        }
+
+        #responseOutput ul,
+        #responseOutput ol {
+            padding-left: 1.4rem;
+        }
+
+        #responseOutput li + li {
+            margin-top: 6px;
+        }
+
+        #responseOutput hr {
+            border: 0;
+            border-top: 1px solid rgba(96, 112, 137, 0.22);
+            margin: 22px 0;
+        }
+
+        #responseOutput blockquote {
+            border-left: 4px solid rgba(15, 118, 110, 0.35);
+            padding: 10px 14px;
+            background: rgba(15, 118, 110, 0.06);
+            border-radius: 0 12px 12px 0;
+            color: #334155;
+        }
+
+        #responseOutput code {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.94em;
+            padding: 0.15em 0.38em;
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.06);
+        }
+
+        #responseOutput pre {
+            overflow-x: auto;
+            padding: 14px 16px;
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.05);
+            border: 1px solid rgba(23, 32, 51, 0.08);
+        }
+
+        #responseOutput pre code {
+            padding: 0;
+            background: transparent;
+        }
+
+        #responseOutput .math-block {
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(15, 118, 110, 0.18);
+            background: rgba(15, 118, 110, 0.06);
+            font-family: 'IBM Plex Mono', monospace;
+            white-space: pre-wrap;
+        }
+
+        #responseOutput .math-block .math-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.74rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+        }
+
+        #responseOutput .placeholder {
+            color: var(--muted);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .output-note {
+            margin-top: 14px;
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        @media (max-width: 980px) {
+            .hero,
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .app {
+                padding: 16px;
+            }
+
+            .brand-panel,
+            .info-panel,
+            .composer,
+            .output-panel {
+                padding: 18px;
+                border-radius: 22px;
+            }
+
+            .stat-row {
+                grid-template-columns: 1fr;
+            }
+
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <section class="hero">
+            <div class="brand-panel">
+                <div class="eyebrow">NetGPT Studio</div>
+                <h1>Run cloud and local models from one polished workspace.</h1>
+                <p class="headline">Switch between Groq, DeepSeek, Anthropic, Gemini, or an offline Ollama model on your Raspberry Pi 5. The interface is optimized for quick prompts, local vision input, and low-friction model switching.</p>
+            </div>
+            <aside class="info-panel">
+                <div>
+                    <div class="section-label"><span>Session</span><span>Live</span></div>
+                    <div class="stat-row">
+                        <div class="stat">
+                            <span>Default offline</span>
+                            <strong>qwen2.5vl:3b</strong>
+                        </div>
+                        <div class="stat">
+                            <span>Local runtime</span>
+                            <strong>Ollama</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="status" id="modelReference"></div>
+            </aside>
+        </section>
+
+        <section class="workspace">
+            <div class="composer">
+                <div class="section-label"><span>Model</span><span>Choose</span></div>
+                <div class="select-wrap">
+                    <select id="modelSelect">
+                        <option value="groq-llama-3.3-70b-versatile">Llama 3.3 70B (Groq)</option>
+                        <option value="groq-llama-3.1-8b-instant">Llama 3.1 8B Instant (Groq)</option>
+                        <option value="deepseek-chat">DeepSeek Chat</option>
+                        <option value="offline">Offline (Ollama local)</option>
+                        <option value="anthropic-claude-sonnet-4-6">Claude 4.6 Sonnet (Anthropic)</option>
+                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
+                    </select>
+                </div>
+
+                <p class="help" id="modelReferenceCopy"></p>
+
+                <input id="imageInput" type="file" accept="image/*">
+                <textarea id="userInput" placeholder="Ask something, drop in a chart or screenshot, and let the selected model respond."></textarea>
+
+                <div class="actions">
+                    <div class="meta">Offline mode uses Ollama locally. Cloud models still route through the Flask proxy.</div>
+                    <button onclick="sendToGroq()">Send</button>
+                </div>
+            </div>
+
+            <div class="output-panel">
+                <div class="section-label"><span>Response</span><span>Output</span></div>
+                <div id="thinkingIndicator" class="thinking-indicator" aria-live="polite" aria-busy="false">
+                    <span>Model is thinking</span>
+                    <span class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                </div>
+                <div id="responseOutput" class="placeholder">Your answer will appear here.</div>
+                <div class="output-note">Tip: switch to Offline for local inference on the Raspberry Pi, or use the image picker when testing a vision model.</div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        var accumulatedResponses = [
+            { role: 'system', content: 'You are a helpful assistant.' }
+        ];
+        function getSelectedModel() {
+            return document.getElementById('modelSelect').value;
+        }
+
+        function updateModelReference() {
+            const selectedModel = getSelectedModel();
+            const reference = document.getElementById('modelReference');
+            const referenceCopy = document.getElementById('modelReferenceCopy');
+            const imageInput = document.getElementById('imageInput');
+
+            if (selectedModel === 'offline') {
+                const text = 'Offline mode uses Ollama. On the Pi, run: ollama pull qwen2.5vl:3b, then start Ollama with: ollama serve. Set OFFLINE_MODEL to override the default model.';
+                reference.textContent = text;
+                referenceCopy.textContent = text;
+                imageInput.style.display = 'block';
+                return;
+            }
+
+            const text = 'Cloud models are proxied through Flask. Use the dropdown to switch providers.';
+            reference.textContent = text;
+            referenceCopy.textContent = text;
+            imageInput.style.display = 'none';
+        }
+
+        function readImageAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                if (!file) {
+                    resolve('');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result || '');
+                reader.onerror = () => reject(new Error('Unable to read image file.'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatInline(text) {
+            return escapeHtml(text)
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/(^|[^*])\*(?!\s)(.+?)(?!\s)\*(?!\*)/g, '$1<em>$2</em>')
+                .replace(/`([^`]+)`/g, '<code>$1</code>');
+        }
+
+        function renderResponseMarkdown(text) {
+            const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+            const output = [];
+            let currentListType = null;
+            let listItems = [];
+            let codeLines = [];
+            let inCode = false;
+            let mathLines = [];
+            let inMath = false;
+
+            const flushList = () => {
+                if (!currentListType) {
+                    return;
+                }
+
+                const items = listItems.map(item => `<li>${item}</li>`).join('');
+                output.push(`<${currentListType}>${items}</${currentListType}>`);
+                currentListType = null;
+                listItems = [];
+            };
+
+            const flushCode = () => {
+                if (!inCode) {
+                    return;
+                }
+
+                output.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+                codeLines = [];
+                inCode = false;
+            };
+
+            const flushMath = () => {
+                if (!inMath) {
+                    return;
+                }
+
+                output.push(`<div class="math-block"><span class="math-label">Equation</span><div>${escapeHtml(mathLines.join('\n'))}</div></div>`);
+                mathLines = [];
+                inMath = false;
+            };
+
+            const flushParagraph = (paragraphLines) => {
+                const paragraph = paragraphLines.join(' ').trim();
+                if (paragraph) {
+                    output.push(`<p>${formatInline(paragraph)}</p>`);
+                }
+            };
+
+            let paragraphLines = [];
+
+            const closeParagraph = () => {
+                if (!paragraphLines.length) {
+                    return;
+                }
+
+                flushList();
+                flushCode();
+                flushMath();
+                flushParagraph(paragraphLines);
+                paragraphLines = [];
+            };
+
+            for (const rawLine of lines) {
+                const line = rawLine.trimEnd();
+
+                if (line.trim() === '') {
+                    closeParagraph();
+                    continue;
+                }
+
+                if (line.startsWith('```')) {
+                    closeParagraph();
+                    if (inCode) {
+                        flushCode();
+                    } else {
+                        inCode = true;
+                    }
+                    continue;
+                }
+
+                if (inCode) {
+                    codeLines.push(line);
+                    continue;
+                }
+
+                if (line === '---') {
+                    closeParagraph();
+                    output.push('<hr>');
+                    continue;
+                }
+
+                if (line.startsWith('$$')) {
+                    closeParagraph();
+                    const mathContent = line === '$$' ? '' : line.replace(/^\$\$/, '').replace(/\$\$$/, '');
+                    if (mathContent) {
+                        output.push(`<div class="math-block"><span class="math-label">Equation</span><div>${escapeHtml(mathContent)}</div></div>`);
+                    } else if (!inMath) {
+                        inMath = true;
+                    } else {
+                        flushMath();
+                    }
+                    continue;
+                }
+
+                if (inMath) {
+                    if (line.endsWith('$$')) {
+                        mathLines.push(line.replace(/\$\$$/, ''));
+                        flushMath();
+                    } else {
+                        mathLines.push(line);
+                    }
+                    continue;
+                }
+
+                const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
+                if (headingMatch) {
+                    closeParagraph();
+                    flushList();
+                    const level = headingMatch[1].length;
+                    output.push(`<h${level}>${formatInline(headingMatch[2])}</h${level}>`);
+                    continue;
+                }
+
+                const unorderedMatch = line.match(/^[-*]\s+(.*)$/);
+                const orderedMatch = line.match(/^\d+\.\s+(.*)$/);
+
+                if (unorderedMatch || orderedMatch) {
+                    closeParagraph();
+                    const nextType = unorderedMatch ? 'ul' : 'ol';
+                    if (currentListType && currentListType !== nextType) {
+                        flushList();
+                    }
+
+                    currentListType = nextType;
+                    listItems.push(formatInline((unorderedMatch || orderedMatch)[1]));
+                    continue;
+                }
+
+                if (currentListType) {
+                    flushList();
+                }
+
+                paragraphLines.push(line);
+            }
+
+            closeParagraph();
+            flushList();
+            flushCode();
+            flushMath();
+
+            return output.join('');
+        }
+
+        function setThinking(isThinking) {
+            const indicator = document.getElementById('thinkingIndicator');
+            const button = document.querySelector('button[onclick="sendToGroq()"]');
+            indicator.classList.toggle('is-visible', isThinking);
+            indicator.setAttribute('aria-busy', isThinking ? 'true' : 'false');
+            button.disabled = isThinking;
+            button.textContent = isThinking ? 'Thinking…' : 'Send';
+        }
+
+        function setResponseContent(content, isError) {
+            const responseOutput = document.getElementById('responseOutput');
+            responseOutput.classList.remove('placeholder');
+            responseOutput.innerHTML = isError ? `<p>${formatInline(content)}</p>` : renderResponseMarkdown(content);
+        }
+
+        document.getElementById('modelSelect').addEventListener('change', updateModelReference);
+        updateModelReference();
+
+        async function sendToGroq() {
+            const selectedModel = getSelectedModel();
+            const prompt = document.getElementById('userInput').value;
+            const imageFile = document.getElementById('imageInput').files[0];
+            const imageData = selectedModel === 'offline' ? await readImageAsDataUrl(imageFile) : '';
+
+            try {
+                setThinking(true);
+                setResponseContent('Model is thinking...', false);
+
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        prompt: prompt,
+                        messages: accumulatedResponses,
+                        imageData: imageData
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Request failed.');
+                }
+                const assistantMessage = data.assistantMessage || { role: 'assistant', content: '' };
+
+                accumulatedResponses.push(assistantMessage);
+                console.log(accumulatedResponses)
+                setResponseContent(assistantMessage.content, false);
+            } catch (error) {
+                console.error('Error:', error);
+                console.log('Accumulated Responses:', accumulatedResponses);
+                setResponseContent(`Error: ${error.message || 'Error occurred.'}`, true);
+            } finally {
+                setThinking(false);
+            }
+        }
+    </script>
+</body>
+
+</html>
