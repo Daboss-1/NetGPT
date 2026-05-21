@@ -662,9 +662,9 @@
             const imageInput = document.getElementById('imageInput');
 
             if (selectedModel === 'offline') {
-                referenceCopy.textContent = 'Offline mode uses Ollama. On the Pi, run: ollama pull qwen2.5vl:3b, then start Ollama with: ollama serve. Set OFFLINE_MODEL to override the default model. Uploads are available for every model.';
+                referenceCopy.textContent = 'This uses offline knowledge - only use for emergency, as it is very intensive to run, and is intended ONLY for internet outage.';
             } else {
-                referenceCopy.textContent = 'Cloud models are proxied through Flask. Uploads are available for every model, and the backend will include the attachment in the request.';
+                referenceCopy.textContent = 'This uses the selected model in the cloud, for online use.';
             }
 
             imageInput.style.display = 'block';
@@ -906,7 +906,7 @@
                         const queued = typeof data.queued === 'number' ? data.queued : 0;
                         referenceCopy.textContent = `Ollama is busy. ${queued} queued ahead.`;
                     } else {
-                        referenceCopy.textContent = 'Offline mode uses Ollama. On the Pi, run: ollama pull qwen2.5vl:3b, then start Ollama with: ollama serve. Set OFFLINE_MODEL to override the default model. Uploads are available for every model.';
+                        referenceCopy.textContent = 'This uses offline knowledge - only use for emergency, as it is very intensive to run, and is intended ONLY for internet outage.';
                     }
                 }
             } catch (error) {
