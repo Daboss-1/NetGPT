@@ -701,8 +701,25 @@
                 .replace(/`([^`]+)`/g, '<code>$1</code>');
         }
 
+        function normalizeKaTeX(text) {
+            if (!text) {
+                return text;
+            }
+
+            const segments = String(text).split('```');
+            for (let i = 0; i < segments.length; i += 2) {
+                segments[i] = segments[i]
+                    .replace(/\\\[/g, '$$')
+                    .replace(/\\\]/g, '$$')
+                    .replace(/\\\(/g, '$')
+                    .replace(/\\\)/g, '$');
+            }
+            return segments.join('```');
+        }
+
         function renderResponseMarkdown(text) {
-            const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+            const normalized = normalizeKaTeX(text);
+            const lines = String(normalized || '').replace(/\r\n/g, '\n').split('\n');
             const output = [];
             let currentListType = null;
             let listItems = [];

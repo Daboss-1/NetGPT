@@ -19,6 +19,10 @@ offline_jobs = {}
 offline_lock = threading.RLock()
 offline_sequence = 0
 offline_worker_started = False
+KATEX_SYSTEM_PROMPT = (
+    'Format all math in KaTeX using $...$ for inline and $$...$$ for blocks. '
+    'Do not use \\(...\\) or \\[...\\].'
+)
 
 
 @app.route('/')
@@ -36,9 +40,9 @@ def post_json(url, payload, headers):
     req = urllib_request.Request(url, data=data, headers=request_headers, method='POST')
     if url.startswith('https://'):
         context = ssl.create_default_context(cafile=certifi.where())
-        response = urllib_request.urlopen(req, timeout=60, context=context)
+        response = urllib_request.urlopen(req, timeout=600, context=context)
     else:
-        response = urllib_request.urlopen(req, timeout=60)
+        response = urllib_request.urlopen(req, timeout=600)
     with response as resp:
         return json.loads(resp.read().decode('utf-8'))
 
@@ -173,6 +177,25 @@ def extract_base64_data(data_url):
     return data_url.split(',', 1)[1] if ',' in data_url else data_url
 
 
+def normalize_katex_text(text):
+    if not text:
+        return text
+
+    segments = text.split('```')
+    for index in range(0, len(segments), 2):
+        segment = segments[index]
+        segment = segment.replace('\\[', '$$').replace('\\]', '$$')
+        segment = segment.replace('\\(', '$').replace('\\)', '$')
+        segments[index] = segment
+    return '```'.join(segments)
+
+
+def ensure_katex_system_message(messages):
+    if any(msg.get('role') == 'system' and KATEX_SYSTEM_PROMPT in msg.get('content', '') for msg in messages):
+        return list(messages)
+    return [{'role': 'system', 'content': KATEX_SYSTEM_PROMPT}] + list(messages)
+
+
 def start_offline_worker():
     global offline_worker_started
     if offline_worker_started:
@@ -229,10 +252,12 @@ def run_offline_request(payload):
         },
         {}
     )
-    return (data.get('message') or {
+    message = (data.get('message') or {
         'role': 'assistant',
         'content': ''
     })
+    message['content'] = normalize_katex_text(message.get('content', ''))
+    return message
 
 
 def enqueue_offline_job(payload):
@@ -327,7 +352,7 @@ def chat():
             if not api_key:
                 return jsonify({'error': 'Missing ANTHROPIC_API_KEY on server.'}), 500
 
-            user_content = []
+            user_content = [{'type': 'text', 'text': KATEX_SYSTEM_PROMPT}]
             if prompt_with_attachment:
                 user_content.append({'type': 'text', 'text': prompt_with_attachment})
 
@@ -369,7 +394,7 @@ def chat():
 
             payload = {
                 'model': selected_model.replace('groq-', ''),
-                'messages': messages + [{'role': 'user', 'content': prompt_with_attachment}]
+                'messages': ensure_katex_system_message(messages) + [{'role': 'user', 'content': prompt_with_attachment}]
             }
             data = post_json(
                 'https://api.groq.com/openai/v1/chat/completions',
@@ -391,7 +416,7 @@ def chat():
 
             payload = {
                 'model': selected_model,
-                'messages': messages + [{'role': 'user', 'content': prompt_with_attachment}]
+                'messages': ensure_katex_system_message(messages) + [{'role': 'user', 'content': prompt_with_attachment}]
             }
             data = post_json(
                 'https://api.deepseek.com/chat/completions',
@@ -410,12 +435,13 @@ def chat():
             messages_without_system = [
                 msg for msg in messages if msg.get('role') != 'system'
             ]
+            messages_with_system = ensure_katex_system_message(messages_without_system)
             image_base64 = None
             if attachment and attachment['kind'] == 'image':
                 image_base64 = extract_base64_data(attachment['content'])
 
             job_id, position = enqueue_offline_job({
-                'messages': messages_without_system,
+                'messages': messages_with_system,
                 'prompt': prompt_with_attachment,
                 'image_base64': image_base64
             })
@@ -426,7 +452,7 @@ def chat():
             if not api_key:
                 return jsonify({'error': 'Missing GOOGLE_API_KEY on server.'}), 500
 
-            user_parts = []
+            user_parts = [{'text': KATEX_SYSTEM_PROMPT}]
             if prompt_with_attachment:
                 user_parts.append({'text': prompt_with_attachment})
 
@@ -443,7 +469,7 @@ def chat():
                     'role': 'model' if msg.get('role') == 'assistant' else 'user',
                     'parts': [{'text': msg.get('content', '')}]
                 }
-                for msg in messages if msg.get('role') != 'system'
+                for msg in ensure_katex_system_message(messages) if msg.get('role') != 'system'
             ] + [{'role': 'user', 'parts': user_parts or [{'text': prompt_with_attachment}]}]
 
             try:
@@ -502,7 +528,7 @@ def chat():
             }
         else:
             return jsonify({'error': 'Unsupported model.'}), 400
-
+        assistant_message['content'] = normalize_katex_text(assistant_message.get('content', ''))
         return jsonify({'assistantMessage': assistant_message})
     except error.HTTPError as exc:
         try:
