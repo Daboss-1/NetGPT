@@ -2,27 +2,168 @@ import base64
 import json
 import os
 import queue
+import socket
+import sqlite3
 import ssl
+import struct
 import threading
 import uuid
 from io import BytesIO
 from urllib import error, request as urllib_request
 
 import certifi
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, session
+import fcntl
 from pypdf import PdfReader
 import time
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from docwriter import DocWriter
 
 app = Flask(__name__)
+app.secret_key = os.getenv("NETGPT_SECRET", "") or os.urandom(24)
+
+DB_PATH = os.getenv("NETGPT_DB", "netgpt.db")
 offline_queue = queue.Queue()
 offline_jobs = {}
 offline_lock = threading.RLock()
 offline_sequence = 0
 offline_worker_started = False
-KATEX_SYSTEM_PROMPT = (
-    'Format all math in KaTeX using $...$ for inline and $$...$$ for blocks. '
-    'Do not use \\(...\\) or \\[...\\].'
-)
+ip_poster_started = False
+
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(chat_id) REFERENCES chats(id)
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def create_chat(user_id: int, title: str | None = None) -> int:
+    conn = get_db()
+    now = int(time.time())
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO chats (user_id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, title, now, now),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        conn.close()
+
+
+def touch_chat(chat_id: int) -> None:
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE chats SET updated_at = ? WHERE id = ?",
+            (int(time.time()), chat_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_chat_title_if_empty(chat_id: int, title: str) -> None:
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            UPDATE chats
+            SET title = ?
+            WHERE id = ? AND (title IS NULL OR title = '')
+            """,
+            (title, chat_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def store_message(chat_id: int, role: str, content: str) -> None:
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO chat_messages (chat_id, role, content, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (chat_id, role, content, int(time.time())),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_chat_for_user(user_id: int, chat_id: int) -> bool:
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM chats WHERE id = ? AND user_id = ?",
+            (chat_id, user_id),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+init_db()
 
 
 @app.route('/')
@@ -40,9 +181,9 @@ def post_json(url, payload, headers):
     req = urllib_request.Request(url, data=data, headers=request_headers, method='POST')
     if url.startswith('https://'):
         context = ssl.create_default_context(cafile=certifi.where())
-        response = urllib_request.urlopen(req, timeout=600, context=context)
+        response = urllib_request.urlopen(req, timeout=1800, context=context)
     else:
-        response = urllib_request.urlopen(req, timeout=600)
+        response = urllib_request.urlopen(req, timeout=1800)
     with response as resp:
         return json.loads(resp.read().decode('utf-8'))
 
@@ -190,12 +331,6 @@ def normalize_katex_text(text):
     return '```'.join(segments)
 
 
-def ensure_katex_system_message(messages):
-    if any(msg.get('role') == 'system' and KATEX_SYSTEM_PROMPT in msg.get('content', '') for msg in messages):
-        return list(messages)
-    return [{'role': 'system', 'content': KATEX_SYSTEM_PROMPT}] + list(messages)
-
-
 def start_offline_worker():
     global offline_worker_started
     if offline_worker_started:
@@ -204,6 +339,46 @@ def start_offline_worker():
     offline_worker_started = True
     worker = threading.Thread(target=offline_worker_loop, daemon=True)
     worker.start()
+
+
+def get_interface_ip(interface_name: str) -> str | None:
+    if not interface_name:
+        return None
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        iface_bytes = interface_name.encode("utf-8")[:15]
+        packed = struct.pack("256s", iface_bytes)
+        result = fcntl.ioctl(sock.fileno(), 0x8915, packed)
+        return socket.inet_ntoa(result[20:24])
+    except Exception:
+        return None
+    finally:
+        sock.close()
+
+
+def start_ip_poster():
+    global ip_poster_started
+    if ip_poster_started:
+        return
+
+    doc_id = os.getenv("GOOGLE_DOC_ID", "1LMWlZho7vclkNMGmsB79mecPxb6iB66hbK9vLgAtMGY").strip()
+    if not doc_id:
+        return
+
+    ip_poster_started = True
+    worker = threading.Thread(target=ip_poster_loop, args=(doc_id,), daemon=True)
+    worker.start()
+
+
+def ip_poster_loop(doc_id: str) -> None:
+    interface_name = os.getenv("WIFI_INTERFACE", "wlan0")
+    writer = DocWriter()
+    while True:
+        ip_address = get_interface_ip(interface_name)
+        if ip_address:
+            writer.replace_document_text(doc_id, f"http://{ip_address}\n")
+        time.sleep(60)
 
 
 def offline_worker_loop():
@@ -224,6 +399,12 @@ def offline_worker_loop():
                 job['status'] = 'done'
                 job['result'] = result
                 job['finished_at'] = time.time()
+            payload = job.get('payload')
+            if payload:
+                chat_id = payload.get('chat_id')
+                if chat_id:
+                    store_message(int(chat_id), result.get('role', 'assistant'), result.get('content', ''))
+                    touch_chat(int(chat_id))
         except Exception as exc:
             with offline_lock:
                 job = offline_jobs.get(job_id)
@@ -236,7 +417,7 @@ def offline_worker_loop():
 
 
 def run_offline_request(payload):
-    offline_model = os.getenv('OFFLINE_MODEL', 'qwen2.5vl:3b')
+    offline_model = payload.get('offline_model') or os.getenv('OFFLINE_MODEL', 'qwen2.5:1.5b')
     offline_base_url = os.getenv('OFFLINE_BASE_URL', 'http://localhost:11434')
 
     ollama_messages = payload['messages'] + [{'role': 'user', 'content': payload['prompt']}]
@@ -308,6 +489,7 @@ def get_offline_status():
 @app.before_request
 def ensure_offline_worker():
     start_offline_worker()
+    start_ip_poster()
 
 
 @app.route('/api/offline/status', methods=['GET'])
@@ -325,6 +507,7 @@ def offline_job_status(job_id):
         response = {
             'status': job['status'],
             'position': get_offline_position(job_id),
+            'startedAt': job.get('started_at'),
         }
         if job['status'] == 'done':
             response['assistantMessage'] = job['result']
@@ -333,12 +516,139 @@ def offline_job_status(job_id):
         return jsonify(response)
 
 
+@app.route('/api/auth/signup', methods=['POST'])
+def signup():
+    body = request.get_json(silent=True) or {}
+    email = (body.get('email') or '').strip().lower()
+    password = body.get('password') or ''
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email is required.'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters.'}), 400
+
+    conn = get_db()
+    try:
+        password_hash = generate_password_hash(password)
+        cur = conn.execute(
+            """
+            INSERT INTO users (email, password_hash, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (email, password_hash, int(time.time())),
+        )
+        conn.commit()
+        session['user_id'] = cur.lastrowid
+        return jsonify({'email': email})
+    except sqlite3.IntegrityError:
+        return jsonify({'error': 'Email is already registered.'}), 409
+    finally:
+        conn.close()
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    body = request.get_json(silent=True) or {}
+    email = (body.get('email') or '').strip().lower()
+    password = body.get('password') or ''
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required.'}), 400
+
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        if not row or not check_password_hash(row['password_hash'], password):
+            return jsonify({'error': 'Invalid email or password.'}), 401
+        session['user_id'] = row['id']
+        return jsonify({'email': row['email']})
+    finally:
+        conn.close()
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/auth/me', methods=['GET'])
+def me():
+    user = get_current_user()
+    if not user:
+        return jsonify({'authenticated': False})
+    return jsonify({'authenticated': True, 'email': user['email']})
+
+
+@app.route('/api/chats', methods=['GET'])
+def list_chats():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Login required.'}), 401
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, title, updated_at
+            FROM chats
+            WHERE user_id = ?
+            ORDER BY updated_at DESC
+            """,
+            (user['id'],),
+        ).fetchall()
+        chats = [
+            {
+                'id': row['id'],
+                'title': row['title'] or 'Untitled chat',
+                'updatedAt': row['updated_at'],
+            }
+            for row in rows
+        ]
+        return jsonify({'chats': chats})
+    finally:
+        conn.close()
+
+
+@app.route('/api/chats', methods=['POST'])
+def create_chat_route():
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Login required.'}), 401
+    body = request.get_json(silent=True) or {}
+    title = (body.get('title') or '').strip() or None
+    chat_id = create_chat(user['id'], title)
+    return jsonify({'chatId': chat_id})
+
+
+@app.route('/api/chats/<int:chat_id>', methods=['GET'])
+def get_chat_messages(chat_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Login required.'}), 401
+    if not get_chat_for_user(user['id'], chat_id):
+        return jsonify({'error': 'Chat not found.'}), 404
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT role, content
+            FROM chat_messages
+            WHERE chat_id = ?
+            ORDER BY id ASC
+            """,
+            (chat_id,),
+        ).fetchall()
+        messages = [{'role': row['role'], 'content': row['content']} for row in rows]
+        return jsonify({'messages': messages})
+    finally:
+        conn.close()
+
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     body = request.get_json(silent=True) or {}
     selected_model = body.get('model', '')
     prompt = body.get('prompt', '')
     messages = body.get('messages', [])
+    chat_id = body.get('chatId')
     attachment = parse_attachment(body.get('attachment'))
     attachment_context = build_attachment_context(attachment)
     prompt_with_attachment = merge_prompt_with_attachment(prompt, attachment_context)
@@ -346,13 +656,36 @@ def chat():
     if not selected_model or (not prompt_with_attachment and not attachment_context):
         return jsonify({'error': 'Model and prompt or attachment are required.'}), 400
 
+    user = get_current_user()
+    offline_model = body.get('offlineModel')
+    if not offline_model and selected_model.startswith('offline:'):
+        offline_model = selected_model.split(':', 1)[1]
+    chat_id_int = None
+    if user:
+        if chat_id:
+            try:
+                chat_id_int = int(chat_id)
+            except ValueError:
+                return jsonify({'error': 'Invalid chat id.'}), 400
+            if not get_chat_for_user(user['id'], chat_id_int):
+                return jsonify({'error': 'Chat not found.'}), 404
+        else:
+            chat_id_int = create_chat(user['id'])
+        if prompt_with_attachment:
+            store_message(chat_id_int, 'user', prompt_with_attachment)
+            touch_chat(chat_id_int)
+            if prompt:
+                title_seed = prompt.strip().split('\n', 1)[0][:64]
+                if title_seed:
+                    set_chat_title_if_empty(chat_id_int, title_seed)
+
     try:
         if selected_model.startswith('anthropic-'):
             api_key = os.getenv('ANTHROPIC_API_KEY')
             if not api_key:
                 return jsonify({'error': 'Missing ANTHROPIC_API_KEY on server.'}), 500
 
-            user_content = [{'type': 'text', 'text': KATEX_SYSTEM_PROMPT}]
+            user_content = []
             if prompt_with_attachment:
                 user_content.append({'type': 'text', 'text': prompt_with_attachment})
 
@@ -394,7 +727,7 @@ def chat():
 
             payload = {
                 'model': selected_model.replace('groq-', ''),
-                'messages': ensure_katex_system_message(messages) + [{'role': 'user', 'content': prompt_with_attachment}]
+                'messages': messages + [{'role': 'user', 'content': prompt_with_attachment}]
             }
             data = post_json(
                 'https://api.groq.com/openai/v1/chat/completions',
@@ -416,7 +749,7 @@ def chat():
 
             payload = {
                 'model': selected_model,
-                'messages': ensure_katex_system_message(messages) + [{'role': 'user', 'content': prompt_with_attachment}]
+                'messages': messages + [{'role': 'user', 'content': prompt_with_attachment}]
             }
             data = post_json(
                 'https://api.deepseek.com/chat/completions',
@@ -431,11 +764,11 @@ def chat():
                 'content': ''
             })
 
-        elif selected_model == 'offline':
+        elif selected_model == 'offline' or selected_model.startswith('offline:'):
             messages_without_system = [
                 msg for msg in messages if msg.get('role') != 'system'
             ]
-            messages_with_system = ensure_katex_system_message(messages_without_system)
+            messages_with_system = list(messages_without_system)
             image_base64 = None
             if attachment and attachment['kind'] == 'image':
                 image_base64 = extract_base64_data(attachment['content'])
@@ -443,16 +776,18 @@ def chat():
             job_id, position = enqueue_offline_job({
                 'messages': messages_with_system,
                 'prompt': prompt_with_attachment,
-                'image_base64': image_base64
+                'image_base64': image_base64,
+                'offline_model': offline_model,
+                'chat_id': chat_id_int,
             })
-            return jsonify({'jobId': job_id, 'position': position}), 202
+            return jsonify({'jobId': job_id, 'position': position, 'chatId': chat_id_int}), 202
 
         elif selected_model.startswith('gemini-'):
             api_key = os.getenv('GOOGLE_API_KEY')
             if not api_key:
                 return jsonify({'error': 'Missing GOOGLE_API_KEY on server.'}), 500
 
-            user_parts = [{'text': KATEX_SYSTEM_PROMPT}]
+            user_parts = []
             if prompt_with_attachment:
                 user_parts.append({'text': prompt_with_attachment})
 
@@ -469,7 +804,7 @@ def chat():
                     'role': 'model' if msg.get('role') == 'assistant' else 'user',
                     'parts': [{'text': msg.get('content', '')}]
                 }
-                for msg in ensure_katex_system_message(messages) if msg.get('role') != 'system'
+                for msg in messages if msg.get('role') != 'system'
             ] + [{'role': 'user', 'parts': user_parts or [{'text': prompt_with_attachment}]}]
 
             try:
@@ -529,7 +864,10 @@ def chat():
         else:
             return jsonify({'error': 'Unsupported model.'}), 400
         assistant_message['content'] = normalize_katex_text(assistant_message.get('content', ''))
-        return jsonify({'assistantMessage': assistant_message})
+        if chat_id_int:
+            store_message(chat_id_int, assistant_message.get('role', 'assistant'), assistant_message.get('content', ''))
+            touch_chat(chat_id_int)
+        return jsonify({'assistantMessage': assistant_message, 'chatId': chat_id_int})
     except error.HTTPError as exc:
         try:
             provider_error = exc.read().decode('utf-8')
