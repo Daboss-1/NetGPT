@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+    <script src="/static/jscanner.js"></script>
     <style>
         :root {
             color-scheme: light;
@@ -820,6 +821,20 @@
         .scan-preview canvas {
             max-width: 100%;
             max-height: 100%;
+            display: block;
+        }
+
+        .scan-guide {
+            position: absolute;
+            inset: 8%;
+            border: 2px dashed rgba(249, 115, 22, 0.7);
+            border-radius: 14px;
+            pointer-events: none;
+            display: none;
+        }
+
+        .scan-preview.is-live .scan-guide {
+            display: block;
         }
 
         .scan-sidebar {
@@ -912,25 +927,38 @@
             font-size: 0.8rem;
         }
 
-        .scan-slider {
-            align-items: center;
-            gap: var(--space-sm);
+        .scan-segmented {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            padding: 4px;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        .scan-slider > div {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            min-width: 120px;
+        .scan-seg {
+            background: transparent;
+            color: #cbd5e1;
+            border: 0;
+            border-radius: 8px;
+            padding: 7px 8px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: none;
         }
 
-        .scan-slider input[type='range'] {
-            flex: 1;
+        .scan-seg:hover {
+            background: rgba(255, 255, 255, 0.06);
+            transform: none;
+            box-shadow: none;
         }
 
-        .scan-slider-value {
-            font-size: 0.7rem;
-            color: #9ca3af;
+        .scan-seg.is-active {
+            background: var(--scan-accent);
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(249, 115, 22, 0.25);
         }
 
         .scan-toggle {
@@ -947,56 +975,14 @@
             height: 14px;
         }
 
-        .scan-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            min-height: 20px;
-        }
-
-        .scan-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
-            border-radius: 999px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            background: rgba(34, 197, 94, 0.16);
-            color: #86efac;
-            border: 1px solid rgba(34, 197, 94, 0.35);
-        }
-
-        .scan-badge.warning {
-            background: rgba(248, 113, 113, 0.18);
-            color: #fecaca;
-            border-color: rgba(248, 113, 113, 0.4);
-        }
-
         .scan-overlay {
             position: absolute;
-            inset: 0;
             pointer-events: none;
+            touch-action: none;
         }
 
-        .scan-overlay.is-review {
+        .scan-overlay.is-active {
             pointer-events: auto;
-        }
-
-        .crop-guides {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-        }
-
-        .crop-rect {
-            position: absolute;
-            border: 2px solid rgba(249, 115, 22, 0.9);
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
-            border-radius: 10px;
-            pointer-events: auto;
-            cursor: move;
         }
 
         .crop-polygon {
@@ -1004,41 +990,29 @@
             stroke: rgba(249, 115, 22, 0.95);
             stroke-width: 2;
             vector-effect: non-scaling-stroke;
+            pointer-events: none;
         }
 
-        .crop-polygon.live {
-            fill: rgba(15, 23, 42, 0.15);
-            stroke: rgba(34, 197, 94, 0.9);
-            stroke-dasharray: 8 6;
-        }
-
-        .scan-overlay.is-live .crop-handle {
-            display: none;
-        }
-
-        .scan-overlay.is-live #cropPolygon {
-            opacity: 0;
-        }
-
-        .scan-overlay.is-review #livePolygon {
-            opacity: 0;
+        .crop-edge {
+            stroke: transparent;
+            stroke-width: 24;
+            vector-effect: non-scaling-stroke;
+            cursor: move;
+            pointer-events: stroke;
         }
 
         .crop-handle {
-            position: absolute;
-            width: 14px;
-            height: 14px;
-            background: #ffffff;
-            border-radius: 50%;
-            border: 2px solid rgba(249, 115, 22, 0.9);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-            pointer-events: auto;
+            fill: #ffffff;
+            stroke: rgba(249, 115, 22, 0.95);
+            stroke-width: 3;
+            vector-effect: non-scaling-stroke;
+            cursor: grab;
+            pointer-events: all;
         }
 
-        .crop-handle.nw { top: -7px; left: -7px; cursor: nwse-resize; }
-        .crop-handle.ne { top: -7px; right: -7px; cursor: nesw-resize; }
-        .crop-handle.sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
-        .crop-handle.se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+        .crop-handle:active {
+            cursor: grabbing;
+        }
 
         .scan-pages {
             display: grid;
@@ -1214,9 +1188,9 @@
                             <button class="scan-button" type="button" onclick="openScanModal()">Scan with camera</button>
                             <button class="ghost-button" type="button" onclick="clearAttachment()">Clear attachment</button>
                         </div>
-                        <div class="scan-hint">Scans are cropped before attaching so they feel like clean paper captures.</div>
                         <div class="upload-status" id="uploadStatus">No attachment selected.</div>
                     </div>
+                    <br>
                     <textarea id="userInput" placeholder="What would you like to know?" aria-label="Your message"></textarea>
 
                     <div class="actions">
@@ -1240,46 +1214,39 @@
     <div class="scan-modal" id="scanModal" aria-hidden="true" role="dialog" aria-label="Scan document">
         <div class="scan-panel">
             <div class="scan-preview" id="scanPreview">
-                <video id="scanVideo" autoplay playsinline></video>
+                <video id="scanVideo" autoplay playsinline muted></video>
+                <div class="scan-guide" id="scanGuide" aria-hidden="true"></div>
                 <img id="scanImage" alt="Captured scan preview" style="display:none;">
                 <canvas id="scanCanvas" style="display:none;"></canvas>
-                <div class="scan-overlay is-live" id="scanOverlay" style="display:none;">
-                    <svg class="crop-guides" id="cropGuides" aria-hidden="true">
-                        <polygon id="livePolygon" class="crop-polygon live" points=""></polygon>
-                        <polygon id="cropPolygon" class="crop-polygon" points=""></polygon>
-                    </svg>
-                    <div class="crop-handle nw" data-handle="tl"></div>
-                    <div class="crop-handle ne" data-handle="tr"></div>
-                    <div class="crop-handle se" data-handle="br"></div>
-                    <div class="crop-handle sw" data-handle="bl"></div>
-                </div>
+                <svg class="scan-overlay" id="scanOverlay" style="display:none;" preserveAspectRatio="none">
+                    <polygon id="cropPolygon" class="crop-polygon"></polygon>
+                    <line class="crop-edge" data-edge="t" x1="0" y1="0" x2="0" y2="0"></line>
+                    <line class="crop-edge" data-edge="r" x1="0" y1="0" x2="0" y2="0"></line>
+                    <line class="crop-edge" data-edge="b" x1="0" y1="0" x2="0" y2="0"></line>
+                    <line class="crop-edge" data-edge="l" x1="0" y1="0" x2="0" y2="0"></line>
+                    <circle class="crop-handle" data-handle="tl" r="14"></circle>
+                    <circle class="crop-handle" data-handle="tr" r="14"></circle>
+                    <circle class="crop-handle" data-handle="br" r="14"></circle>
+                    <circle class="crop-handle" data-handle="bl" r="14"></circle>
+                </svg>
             </div>
             <div class="scan-sidebar">
                 <h2 class="scan-title">Scan paper</h2>
-                <p class="scan-copy">Align the page. We'll detect edges, straighten, and clean it up.</p>
-                <div class="scan-badges" id="scanBadges"></div>
+                <p class="scan-copy" id="scanCopy">Position the page inside the frame, then capture.</p>
                 <div class="scan-settings">
-                    <div class="scan-setting-label">Scan settings</div>
+                    <div class="scan-setting-label">Output</div>
                     <div class="scan-setting-row">
-                        <span>Output</span>
+                        <span>Format</span>
                         <select id="scanFormat">
-                            <option value="png" selected>PNG (clean)</option>
+                            <option value="png" selected>PNG image</option>
                             <option value="pdf">PDF (multi-page)</option>
                         </select>
                     </div>
-                    <div class="scan-setting-row scan-slider">
-                        <div>
-                            <div>Edge sensitivity</div>
-                            <div class="scan-slider-value" id="edgeSensitivityValue">1.0x</div>
-                        </div>
-                        <input id="edgeSensitivity" type="range" min="0.6" max="1.6" step="0.1" value="1.0" aria-label="Edge sensitivity">
-                    </div>
-                    <div class="scan-setting-row scan-slider">
-                        <div>
-                            <div>Detection resolution</div>
-                            <div class="scan-slider-value" id="edgeResolutionValue">720px</div>
-                        </div>
-                        <input id="edgeResolution" type="range" min="480" max="1200" step="60" value="720" aria-label="Detection resolution">
+                    <div class="scan-setting-label">Filter</div>
+                    <div class="scan-segmented" role="tablist" aria-label="Color filter">
+                        <button type="button" class="scan-seg is-active" data-filter="color" role="tab" aria-selected="true">Color</button>
+                        <button type="button" class="scan-seg" data-filter="gray" role="tab" aria-selected="false">Gray</button>
+                        <button type="button" class="scan-seg" data-filter="bw" role="tab" aria-selected="false">B&amp;W</button>
                     </div>
                     <label class="scan-toggle">
                         <input type="checkbox" id="scanAutoEnhance" checked>
@@ -1294,12 +1261,13 @@
                     <div class="scan-pages-list" id="scanPagesList"></div>
                 </div>
                 <div class="scan-actions">
-                    <button class="scan-primary" id="scanCaptureBtn" type="button" onclick="captureScan()">Capture</button>
-                    <button class="scan-secondary" id="scanDetectBtn" type="button" onclick="autoDetectCorners()">Detect edges</button>
-                    <button class="scan-secondary" id="scanRetakeBtn" type="button" onclick="retakeScan()">Retake</button>
-                    <button class="scan-secondary" id="scanAddBtn" type="button" onclick="addScanPage()">Add page</button>
-                    <button class="scan-secondary" id="scanDoneBtn" type="button" onclick="doneScan()">Done</button>
-                    <button class="scan-secondary" id="scanCloseBtn" type="button" onclick="closeScanModal()">Close</button>
+                    <button class="scan-primary" id="scanCaptureBtn" type="button">Capture</button>
+                    <button class="scan-secondary" id="scanDetectBtn" type="button">Detect edges</button>
+                    <button class="scan-secondary" id="scanRotateBtn" type="button">Rotate 90&deg;</button>
+                    <button class="scan-secondary" id="scanRetakeBtn" type="button">Retake</button>
+                    <button class="scan-secondary" id="scanAddBtn" type="button">Add page</button>
+                    <button class="scan-primary" id="scanDoneBtn" type="button">Done</button>
+                    <button class="scan-secondary" id="scanCloseBtn" type="button">Close</button>
                 </div>
             </div>
         </div>
@@ -1315,29 +1283,25 @@
         var isOfflineRequestActive = false;
         var isAuthenticated = false;
         var currentChatId = null;
+        // ─── Scanner state (Drive-like) ───
+        // Crop coordinates are ALWAYS stored in natural image pixels (the captured image's
+        // own resolution). The SVG overlay's viewBox matches those dimensions, so drag
+        // interactions are layout-independent.
         var scanStream = null;
-        var scanImageDataUrl = '';
-        var cropState = null;
-        var scanPages = [];
+        var scanMode = 'idle';            // 'idle' | 'live' | 'review'
+        var scanCaptureNaturalW = 0;
+        var scanCaptureNaturalH = 0;
+        var scanRawDataUrl = '';          // unprocessed capture
+        var cropState = null;             // { tl, tr, br, bl } in natural pixels
+        var scanPages = [];               // [{ id, rawDataUrl, corners, rotation, processedDataUrl }]
         var selectedScanIndex = -1;
-        var scanHasCapture = false;
-        var scanMode = 'live';
-        var scanLiveTimer = null;
-        var scanLiveCorners = null;
-        var scanAnalysisCanvas = null;
+        var scanCurrentRotation = 0;      // 0 | 90 | 180 | 270 applied AFTER warp
         var scanSettings = {
             format: 'png',
             autoEnhance: true,
-            edgeSensitivity: 1.0,
-            edgeResolution: 720
+            filter: 'color'               // 'color' | 'gray' | 'bw'
         };
-        var scanDetectConfig = {
-            maxSize: 720,
-            minEdgePoints: 1200
-        };
-        var scanDetectBase = {
-            minEdgePoints: 1200
-        };
+        var scanDragState = null;
 
         function setAuthState(authenticated, payload) {
             isAuthenticated = authenticated;
@@ -1737,8 +1701,9 @@
             const modal = document.getElementById('scanModal');
             modal.classList.add('is-open');
             modal.setAttribute('aria-hidden', 'false');
-            syncScanSettings();
-            setScanMode('live');
+            scanPages = [];
+            selectedScanIndex = -1;
+            renderScanPages();
             startScanCamera();
         }
 
@@ -1747,16 +1712,21 @@
             modal.classList.remove('is-open');
             modal.setAttribute('aria-hidden', 'true');
             stopScanCamera();
-            resetScanPreview();
+            resetScanReview();
+            setScanMode('idle');
         }
 
         async function startScanCamera() {
             const video = document.getElementById('scanVideo');
+            const preview = document.getElementById('scanPreview');
             const img = document.getElementById('scanImage');
             const overlay = document.getElementById('scanOverlay');
+
             img.style.display = 'none';
-            overlay.style.display = 'block';
+            overlay.style.display = 'none';
             video.style.display = 'block';
+            preview.classList.add('is-live');
+            setScanMode('live');
 
             try {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1764,952 +1734,634 @@
                     closeScanModal();
                     return;
                 }
-                scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+                if (scanStream) {
+                    scanStream.getTracks().forEach(t => t.stop());
+                    scanStream = null;
+                }
+                scanStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
+                    audio: false
+                });
                 video.srcObject = scanStream;
-                video.onloadedmetadata = () => {
-                    setScanMode('live');
-                    startLiveScanPreview();
-                };
+                await video.play().catch(() => {});
             } catch (error) {
-                const secureHint = window.isSecureContext
-                    ? ''
-                    : ' Camera access requires HTTPS or localhost.';
-                alert('Camera permission is required to scan. Please allow access in your browser settings.' + secureHint);
+                const hint = window.isSecureContext ? '' : ' Camera access requires HTTPS or localhost.';
+                alert('Camera permission is required to scan.' + hint);
                 closeScanModal();
             }
         }
 
         function stopScanCamera() {
-            stopLiveScanPreview();
             if (scanStream) {
                 scanStream.getTracks().forEach(track => track.stop());
                 scanStream = null;
             }
-        }
-
-        function resetScanPreview() {
-            scanImageDataUrl = '';
-            cropState = null;
-            scanLiveCorners = null;
-            const overlay = document.getElementById('scanOverlay');
-            overlay.style.display = 'none';
-            scanHasCapture = false;
-            selectedScanIndex = -1;
-            renderScanPages();
-            const livePolygon = document.getElementById('livePolygon');
-            if (livePolygon) {
-                livePolygon.setAttribute('points', '');
-            }
-            const badges = document.getElementById('scanBadges');
-            if (badges) {
-                badges.innerHTML = '';
-            }
-            updateScanActions();
-        }
-
-        function captureScan() {
             const video = document.getElementById('scanVideo');
-            const canvas = document.getElementById('scanCanvas');
-            const img = document.getElementById('scanImage');
-            const overlay = document.getElementById('scanOverlay');
-
-            if (!video.videoWidth || !video.videoHeight) {
-                return;
+            if (video) {
+                video.srcObject = null;
             }
-
-            const targetWidth = Math.min(1600, video.videoWidth);
-            const targetHeight = Math.round(video.videoHeight * (targetWidth / video.videoWidth));
-            canvas.width = targetWidth;
-            canvas.height = targetHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-            scanImageDataUrl = canvas.toDataURL('image/png');
-
-            img.src = scanImageDataUrl;
-            img.style.display = 'block';
-            video.style.display = 'none';
-            stopScanCamera();
-
-            overlay.style.display = 'block';
-            setScanMode('review');
-            scanHasCapture = true;
-            if (scanLiveCorners) {
-                cropState = {
-                    tl: { ...scanLiveCorners.tl },
-                    tr: { ...scanLiveCorners.tr },
-                    br: { ...scanLiveCorners.br },
-                    bl: { ...scanLiveCorners.bl }
-                };
-                positionCropHandles();
-            } else {
-                initializeCropRect();
-            }
-            autoDetectCorners();
-        }
-
-        function retakeScan() {
-            resetScanPreview();
-            startScanCamera();
-        }
-
-        function syncScanSettings() {
-            const format = document.getElementById('scanFormat');
-            const autoEnhance = document.getElementById('scanAutoEnhance');
-            const sensitivity = document.getElementById('edgeSensitivity');
-            const resolution = document.getElementById('edgeResolution');
-            if (format) {
-                scanSettings.format = format.value || 'png';
-            }
-            if (autoEnhance) {
-                scanSettings.autoEnhance = autoEnhance.checked;
-            }
-            if (sensitivity) {
-                scanSettings.edgeSensitivity = parseFloat(sensitivity.value) || 1.0;
-                const label = document.getElementById('edgeSensitivityValue');
-                if (label) {
-                    label.textContent = scanSettings.edgeSensitivity.toFixed(1) + 'x';
-                }
-            }
-            if (resolution) {
-                scanSettings.edgeResolution = parseInt(resolution.value, 10) || 720;
-                scanDetectConfig.maxSize = scanSettings.edgeResolution;
-                const label = document.getElementById('edgeResolutionValue');
-                if (label) {
-                    label.textContent = scanSettings.edgeResolution + 'px';
-                }
-            }
-            scanDetectConfig.minEdgePoints = Math.max(400, Math.round(scanDetectBase.minEdgePoints / scanSettings.edgeSensitivity));
         }
 
         function setScanMode(mode) {
             scanMode = mode;
+            const preview = document.getElementById('scanPreview');
             const overlay = document.getElementById('scanOverlay');
-            overlay.classList.toggle('is-live', mode === 'live');
-            overlay.classList.toggle('is-review', mode === 'review');
-            overlay.style.display = 'block';
-            if (mode === 'review') {
-                stopLiveScanPreview();
-            }
+            preview.classList.toggle('is-live', mode === 'live');
+            overlay.classList.toggle('is-active', mode === 'review');
+            overlay.style.display = mode === 'review' ? 'block' : 'none';
             updateScanActions();
         }
 
         function updateScanActions() {
-            const captureBtn = document.getElementById('scanCaptureBtn');
-            const detectBtn = document.getElementById('scanDetectBtn');
-            const retakeBtn = document.getElementById('scanRetakeBtn');
+            const inLive = scanMode === 'live';
+            const inReview = scanMode === 'review';
+            const hasPages = scanPages.length > 0;
+            document.getElementById('scanCaptureBtn').style.display = inLive ? 'inline-flex' : 'none';
+            document.getElementById('scanDetectBtn').style.display = inReview ? 'inline-flex' : 'none';
+            document.getElementById('scanRotateBtn').style.display = inReview ? 'inline-flex' : 'none';
+            document.getElementById('scanRetakeBtn').style.display = inReview ? 'inline-flex' : 'none';
             const addBtn = document.getElementById('scanAddBtn');
+            addBtn.style.display = inReview ? 'inline-flex' : 'none';
             const doneBtn = document.getElementById('scanDoneBtn');
-            const hasPages = scanPages.length > 0 || scanHasCapture;
-            if (captureBtn) {
-                captureBtn.style.display = scanMode === 'live' ? 'inline-flex' : 'none';
-            }
-            if (detectBtn) {
-                detectBtn.style.display = scanMode === 'review' ? 'inline-flex' : 'none';
-            }
-            if (retakeBtn) {
-                retakeBtn.style.display = scanMode === 'review' ? 'inline-flex' : 'none';
-            }
-            if (addBtn) {
-                addBtn.style.display = scanMode === 'review' ? 'inline-flex' : 'none';
-                addBtn.disabled = !scanHasCapture;
-            }
-            if (doneBtn) {
-                doneBtn.style.display = hasPages ? 'inline-flex' : 'none';
-                doneBtn.textContent = scanPages.length > 1 ? 'Done (' + scanPages.length + ' pages)' : 'Done';
-            }
+            const doneVisible = inReview || hasPages;
+            doneBtn.style.display = doneVisible ? 'inline-flex' : 'none';
+            const totalPages = hasPages ? scanPages.length + (inReview ? 1 : 0) : (inReview ? 1 : 0);
+            doneBtn.textContent = totalPages > 1 ? 'Done (' + totalPages + ' pages)' : 'Done';
         }
 
-        function startLiveScanPreview() {
-            stopLiveScanPreview();
-            scanLiveTimer = setInterval(() => {
-                if (scanMode !== 'live') {
-                    return;
-                }
-                analyzeLiveFrame();
-            }, 400);
-        }
-
-        function stopLiveScanPreview() {
-            if (scanLiveTimer) {
-                clearInterval(scanLiveTimer);
-                scanLiveTimer = null;
-            }
-        }
-
-        function analyzeLiveFrame() {
-            const video = document.getElementById('scanVideo');
-            if (!video || !video.videoWidth || !video.videoHeight) {
-                return;
-            }
-            const videoRect = video.getBoundingClientRect();
-            if (videoRect.width < 10 || videoRect.height < 10) {
-                return;
-            }
-            if (!scanAnalysisCanvas) {
-                scanAnalysisCanvas = document.createElement('canvas');
-            }
-            const scale = Math.min(1, scanDetectConfig.maxSize / Math.max(video.videoWidth, video.videoHeight));
-            const targetWidth = Math.max(1, Math.round(video.videoWidth * scale));
-            const targetHeight = Math.max(1, Math.round(video.videoHeight * scale));
-            scanAnalysisCanvas.width = targetWidth;
-            scanAnalysisCanvas.height = targetHeight;
-            const ctx = scanAnalysisCanvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-            const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-            const edgePoints = detectEdges(imageData, targetWidth, targetHeight);
-            const corners = estimateQuadFromEdges(edgePoints, targetWidth, targetHeight, scanDetectConfig.minEdgePoints * 0.4)
-                || fallbackCorners(targetWidth, targetHeight);
-            const previewRect = document.getElementById('scanPreview').getBoundingClientRect();
-            const mapped = mapCornersToPreview(corners, video, targetWidth, targetHeight);
-            if (cornersAreValid(mapped, previewRect)) {
-                scanLiveCorners = mapped;
-                drawLivePolygon(scanLiveCorners);
-            } else {
-                const fallback = getCenteredPreviewCorners(previewRect);
-                scanLiveCorners = fallback;
-                drawLivePolygon(fallback);
-            }
-            updateQualityBadges(imageData, targetWidth, targetHeight);
-        }
-
-        function drawLivePolygon(corners) {
-            const polygon = document.getElementById('livePolygon');
-            if (!polygon || !corners) {
-                if (polygon) {
-                    polygon.setAttribute('points', '');
-                }
-                return;
-            }
-            polygon.setAttribute('points', [corners.tl, corners.tr, corners.br, corners.bl]
-                .map(pt => `${pt.x},${pt.y}`).join(' '));
-        }
-
-        function updateQualityBadges(imageData, width, height) {
-            const badges = document.getElementById('scanBadges');
-            if (!badges) {
-                return;
-            }
-            const quality = analyzeImageQuality(imageData, width, height);
-            badges.innerHTML = '';
-            if (!quality.lowLight && !quality.blurry) {
-                const ok = document.createElement('div');
-                ok.className = 'scan-badge';
-                ok.textContent = 'Ready';
-                badges.appendChild(ok);
-                return;
-            }
-            if (quality.lowLight) {
-                const low = document.createElement('div');
-                low.className = 'scan-badge warning';
-                low.textContent = 'Low light';
-                badges.appendChild(low);
-            }
-            if (quality.blurry) {
-                const blur = document.createElement('div');
-                blur.className = 'scan-badge warning';
-                blur.textContent = 'Blurry';
-                badges.appendChild(blur);
-            }
-        }
-
-        function initializeCropRect() {
-            const preview = document.getElementById('scanPreview');
-            const bounds = preview.getBoundingClientRect();
-            const width = Math.round(bounds.width * 0.7);
-            const height = Math.round(bounds.height * 0.7);
-            const left = Math.round((bounds.width - width) / 2);
-            const top = Math.round((bounds.height - height) / 2);
-            cropState = {
-                tl: { x: left, y: top },
-                tr: { x: left + width, y: top },
-                br: { x: left + width, y: top + height },
-                bl: { x: left, y: top + height }
-            };
-            positionCropHandles();
-        }
-
-        function positionCropHandles() {
-            if (!cropState) {
-                return;
-            }
+        function resetScanReview() {
+            scanRawDataUrl = '';
+            scanCaptureNaturalW = 0;
+            scanCaptureNaturalH = 0;
+            cropState = null;
+            scanCurrentRotation = 0;
             const overlay = document.getElementById('scanOverlay');
-            const handles = overlay.querySelectorAll('.crop-handle');
-            handles.forEach(handle => {
-                const key = handle.getAttribute('data-handle');
-                const point = cropState[key];
-                handle.style.left = (point.x - 7) + 'px';
-                handle.style.top = (point.y - 7) + 'px';
-            });
-            const polygon = document.getElementById('cropPolygon');
-            polygon.setAttribute('points', [
-                cropState.tl,
-                cropState.tr,
-                cropState.br,
-                cropState.bl
-            ].map(pt => `${pt.x},${pt.y}`).join(' '));
+            overlay.style.display = 'none';
         }
 
-        function clampPoint(point, boundsWidth, boundsHeight) {
-            point.x = Math.max(0, Math.min(boundsWidth, point.x));
-            point.y = Math.max(0, Math.min(boundsHeight, point.y));
-        }
-
-        function mapCornersToPreview(corners, video, sourceWidth, sourceHeight) {
-            const previewRect = document.getElementById('scanPreview').getBoundingClientRect();
-            const videoRect = video.getBoundingClientRect();
-            const scaleX = videoRect.width / sourceWidth;
-            const scaleY = videoRect.height / sourceHeight;
-            const offsetX = videoRect.left - previewRect.left;
-            const offsetY = videoRect.top - previewRect.top;
-            return {
-                tl: { x: corners.tl.x * scaleX + offsetX, y: corners.tl.y * scaleY + offsetY },
-                tr: { x: corners.tr.x * scaleX + offsetX, y: corners.tr.y * scaleY + offsetY },
-                br: { x: corners.br.x * scaleX + offsetX, y: corners.br.y * scaleY + offsetY },
-                bl: { x: corners.bl.x * scaleX + offsetX, y: corners.bl.y * scaleY + offsetY }
-            };
-        }
-
-        function analyzeImageQuality(imageData, width, height) {
-            const data = imageData.data;
-            let sumLum = 0;
-            let count = 0;
-            let lapSum = 0;
-            let lapSumSq = 0;
-            for (let y = 1; y < height - 1; y += 2) {
-                for (let x = 1; x < width - 1; x += 2) {
-                    const idx = (y * width + x) * 4;
-                    const r = data[idx];
-                    const g = data[idx + 1];
-                    const b = data[idx + 2];
-                    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                    sumLum += lum;
-                    count += 1;
-
-                    const idxN = ((y - 1) * width + x) * 4;
-                    const idxS = ((y + 1) * width + x) * 4;
-                    const idxW = (y * width + (x - 1)) * 4;
-                    const idxE = (y * width + (x + 1)) * 4;
-                    const lumN = 0.299 * data[idxN] + 0.587 * data[idxN + 1] + 0.114 * data[idxN + 2];
-                    const lumS = 0.299 * data[idxS] + 0.587 * data[idxS + 1] + 0.114 * data[idxS + 2];
-                    const lumW = 0.299 * data[idxW] + 0.587 * data[idxW + 1] + 0.114 * data[idxW + 2];
-                    const lumE = 0.299 * data[idxE] + 0.587 * data[idxE + 1] + 0.114 * data[idxE + 2];
-                    const lap = (lumN + lumS + lumW + lumE) - 4 * lum;
-                    lapSum += lap;
-                    lapSumSq += lap * lap;
-                }
-            }
-            const meanLum = count ? sumLum / count : 0;
-            const meanLap = count ? lapSum / count : 0;
-            const varianceLap = count ? (lapSumSq / count) - (meanLap * meanLap) : 0;
-            return {
-                lowLight: meanLum < 70,
-                blurry: varianceLap < 120
-            };
-        }
-
-        function polygonArea(points) {
-            const pts = [points.tl, points.tr, points.br, points.bl];
-            let area = 0;
-            for (let i = 0; i < pts.length; i++) {
-                const next = pts[(i + 1) % pts.length];
-                area += pts[i].x * next.y - next.x * pts[i].y;
-            }
-            return Math.abs(area / 2);
-        }
-
-        function cornersAreValid(corners, bounds) {
-            if (!corners) {
-                return false;
-            }
-            const area = polygonArea(corners);
-            const boundsArea = bounds.width * bounds.height;
-            if (area < boundsArea * 0.12) {
-                return false;
-            }
-            const pts = [corners.tl, corners.tr, corners.br, corners.bl];
-            return pts.every(pt => pt.x >= 0 && pt.y >= 0 && pt.x <= bounds.width && pt.y <= bounds.height);
-        }
-
-        function getCenteredPreviewCorners(bounds) {
-            const insetX = bounds.width * 0.08;
-            const insetY = bounds.height * 0.08;
-            return {
-                tl: { x: insetX, y: insetY },
-                tr: { x: bounds.width - insetX, y: insetY },
-                br: { x: bounds.width - insetX, y: bounds.height - insetY },
-                bl: { x: insetX, y: bounds.height - insetY }
-            };
-        }
-
-        function doneScan() {
-            const pages = [...scanPages];
-            if (scanHasCapture) {
-                getCroppedDataUrl().then(croppedData => {
-                    if (croppedData) {
-                        pages.push({ id: 'temp', dataUrl: croppedData });
-                    }
-                    if (!pages.length) {
-                        return;
-                    }
-                    exportScanPages(pages.map(page => page.dataUrl));
-                });
+        // ─── Capture ──────────────────────────────────────────────────────
+        function captureScan() {
+            const video = document.getElementById('scanVideo');
+            if (!video.videoWidth || !video.videoHeight) {
                 return;
             }
-            if (!pages.length) {
-                return;
-            }
-            exportScanPages(pages.map(page => page.dataUrl));
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+            stopScanCamera();
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+            enterReview(dataUrl, w, h);
         }
 
-        function addScanPage() {
-            if (!scanHasCapture) {
-                return;
-            }
-            getCroppedDataUrl().then(croppedData => {
-                if (!croppedData) {
-                    return;
-                }
-                scanPages.push({
-                    id: 'scan-' + Date.now() + '-' + scanPages.length,
-                    dataUrl: croppedData
-                });
-                scanHasCapture = false;
-                selectedScanIndex = scanPages.length - 1;
-                renderScanPages();
-                resetScanPreview();
-                startScanCamera();
-            });
-        }
-
-        function exportScanPages(dataUrls) {
-            syncScanSettings();
-            if (scanSettings.format === 'pdf') {
-                createPdfFromDataUrls(dataUrls);
-                return;
-            }
-            if (dataUrls.length === 1) {
-                injectScanAsFile(dataUrls[0], 'scan', 'image/png');
-                closeScanModal();
-                return;
-            }
-            stitchPagesToFile(dataUrls, 'image/png');
-        }
-
-        function stitchPagesToFile(dataUrls, mimeType) {
-            const images = dataUrls.map(url => loadImage(url));
-            Promise.all(images).then(imgs => {
-                const margin = 24;
-                const targetWidth = Math.min(1600, Math.max(...imgs.map(img => img.naturalWidth)));
-                const scaled = imgs.map(img => {
-                    const scale = targetWidth / img.naturalWidth;
-                    return { img, width: targetWidth, height: Math.round(img.naturalHeight * scale) };
-                });
-                const totalHeight = scaled.reduce((sum, item) => sum + item.height, 0) + margin * (scaled.length + 1);
-                const canvas = document.getElementById('scanCanvas');
-                canvas.width = targetWidth + margin * 2;
-                canvas.height = totalHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#f8fafc';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                let y = margin;
-                scaled.forEach(item => {
-                    const x = (canvas.width - item.width) / 2;
-                    ctx.drawImage(item.img, x, y, item.width, item.height);
-                    y += item.height + margin;
-                });
-                const stitched = canvas.toDataURL(mimeType || 'image/png');
-                injectScanAsFile(stitched, 'scan-stack', mimeType || 'image/png');
-                closeScanModal();
-            });
-        }
-
-        function createPdfFromDataUrls(dataUrls) {
-            const pdfLib = window.jspdf && window.jspdf.jsPDF;
-            if (!pdfLib) {
-                alert('PDF export is still loading. Please try again in a moment.');
-                return;
-            }
-            const pdf = new pdfLib({ unit: 'pt', format: 'a4' });
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const margin = 24;
-            const usableWidth = pageWidth - margin * 2;
-            const usableHeight = pageHeight - margin * 2;
-
-            const images = dataUrls.map(url => loadImage(url));
-            Promise.all(images).then(imgs => {
-                imgs.forEach((img, index) => {
-                    const scale = Math.min(usableWidth / img.naturalWidth, usableHeight / img.naturalHeight);
-                    const width = img.naturalWidth * scale;
-                    const height = img.naturalHeight * scale;
-                    const x = (pageWidth - width) / 2;
-                    const y = (pageHeight - height) / 2;
-                    if (index > 0) {
-                        pdf.addPage();
-                    }
-                    pdf.addImage(img, 'PNG', x, y, width, height);
-                });
-                const blob = pdf.output('blob');
-                const file = new File([blob], 'scan-' + Date.now() + '.pdf', { type: 'application/pdf' });
-                const input = document.getElementById('imageInput');
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                input.files = dt.files;
-                updateUploadStatus();
-                closeScanModal();
-            });
-        }
-
-        function loadImage(src) {
-            return new Promise(resolve => {
-                const img = new Image();
-                img.onload = () => resolve(img);
-                img.src = src;
-            });
-        }
-
-        function renderScanPages() {
-            const list = document.getElementById('scanPagesList');
-            const count = document.getElementById('scanPagesCount');
-            list.innerHTML = '';
-            count.textContent = String(scanPages.length);
-            if (!scanPages.length) {
-                updateScanActions();
-                return;
-            }
-            scanPages.forEach((page, index) => {
-                const item = document.createElement('div');
-                item.className = 'scan-page-item' + (index === selectedScanIndex ? ' is-active' : '');
-                item.addEventListener('click', () => selectScanPage(index));
-                const img = document.createElement('img');
-                img.className = 'scan-page-thumb';
-                img.src = page.dataUrl;
-                const meta = document.createElement('div');
-                meta.className = 'scan-page-meta';
-                meta.textContent = `Page ${index + 1}`;
-                const remove = document.createElement('button');
-                remove.className = 'scan-page-remove';
-                remove.type = 'button';
-                remove.textContent = 'Remove';
-                remove.addEventListener('click', event => {
-                    event.stopPropagation();
-                    removeScanPage(index);
-                });
-                item.appendChild(img);
-                item.appendChild(meta);
-                item.appendChild(remove);
-                list.appendChild(item);
-            });
-            updateScanActions();
-        }
-
-        function selectScanPage(index) {
-            selectedScanIndex = index;
-            const page = scanPages[index];
-            if (page) {
-                scanImageDataUrl = page.dataUrl;
-                const img = document.getElementById('scanImage');
-                const video = document.getElementById('scanVideo');
-                const overlay = document.getElementById('scanOverlay');
-                img.src = scanImageDataUrl;
-                img.style.display = 'block';
-                video.style.display = 'none';
-                overlay.style.display = 'block';
-                scanHasCapture = true;
-                initializeCropRect();
-                autoDetectCorners();
-                setScanMode('review');
-            }
-            renderScanPages();
-        }
-
-        function removeScanPage(index) {
-            scanPages.splice(index, 1);
-            if (selectedScanIndex >= scanPages.length) {
-                selectedScanIndex = scanPages.length - 1;
-            }
-            renderScanPages();
-        }
-
-        function autoDetectCorners() {
-            if (!scanImageDataUrl) {
-                return;
-            }
-            setScanMode('review');
+        function enterReview(dataUrl, naturalW, naturalH) {
+            scanRawDataUrl = dataUrl;
+            scanCaptureNaturalW = naturalW;
+            scanCaptureNaturalH = naturalH;
+            scanCurrentRotation = 0;
             const img = document.getElementById('scanImage');
+            const video = document.getElementById('scanVideo');
+            const overlay = document.getElementById('scanOverlay');
+            img.onload = () => {
+                overlay.setAttribute('viewBox', '0 0 ' + naturalW + ' ' + naturalH);
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                positionOverlayToImage();
+                detectAndApplyQuad();
+                setScanMode('review');
+            };
+            img.src = dataUrl;
+            img.style.display = 'block';
+            video.style.display = 'none';
+        }
+
+        function positionOverlayToImage() {
+            const img = document.getElementById('scanImage');
+            const preview = document.getElementById('scanPreview');
+            const overlay = document.getElementById('scanOverlay');
             if (!img.naturalWidth) {
-                img.onload = () => autoDetectCorners();
                 return;
             }
-            const downscaled = getDownscaledImageData(img, scanDetectConfig.maxSize);
-            const edgePoints = detectEdges(downscaled.imageData, downscaled.width, downscaled.height);
-            const corners = estimateQuadFromEdges(edgePoints, downscaled.width, downscaled.height, scanDetectConfig.minEdgePoints)
-                || fallbackCorners(downscaled.width, downscaled.height);
-            const previewRect = document.getElementById('scanPreview').getBoundingClientRect();
+            const previewRect = preview.getBoundingClientRect();
             const imageRect = img.getBoundingClientRect();
-            const scaleX = imageRect.width / img.naturalWidth;
-            const scaleY = imageRect.height / img.naturalHeight;
-            const offsetX = imageRect.left - previewRect.left;
-            const offsetY = imageRect.top - previewRect.top;
-            const scaleToNaturalX = img.naturalWidth / downscaled.width;
-            const scaleToNaturalY = img.naturalHeight / downscaled.height;
+            overlay.style.left = (imageRect.left - previewRect.left) + 'px';
+            overlay.style.top = (imageRect.top - previewRect.top) + 'px';
+            overlay.style.width = imageRect.width + 'px';
+            overlay.style.height = imageRect.height + 'px';
+        }
+        window.addEventListener('resize', () => {
+            if (scanMode === 'review') positionOverlayToImage();
+        });
+
+        function retakeScan() {
+            resetScanReview();
+            startScanCamera();
+        }
+
+        // ─── Crop overlay rendering ────────────────────────────────────────
+        function setCropFromCorners(corners) {
             cropState = {
-                tl: { x: corners.tl.x * scaleToNaturalX * scaleX + offsetX, y: corners.tl.y * scaleToNaturalY * scaleY + offsetY },
-                tr: { x: corners.tr.x * scaleToNaturalX * scaleX + offsetX, y: corners.tr.y * scaleToNaturalY * scaleY + offsetY },
-                br: { x: corners.br.x * scaleToNaturalX * scaleX + offsetX, y: corners.br.y * scaleToNaturalY * scaleY + offsetY },
-                bl: { x: corners.bl.x * scaleToNaturalX * scaleX + offsetX, y: corners.bl.y * scaleToNaturalY * scaleY + offsetY }
+                tl: { x: corners.tl.x, y: corners.tl.y },
+                tr: { x: corners.tr.x, y: corners.tr.y },
+                br: { x: corners.br.x, y: corners.br.y },
+                bl: { x: corners.bl.x, y: corners.bl.y }
             };
-            const bounds = document.getElementById('scanPreview').getBoundingClientRect();
-            if (!cornersAreValid(cropState, bounds)) {
-                initializeCropRect();
-                return;
-            }
-            clampPoint(cropState.tl, bounds.width, bounds.height);
-            clampPoint(cropState.tr, bounds.width, bounds.height);
-            clampPoint(cropState.br, bounds.width, bounds.height);
-            clampPoint(cropState.bl, bounds.width, bounds.height);
-            positionCropHandles();
+            renderCropOverlay();
         }
 
-        function getDownscaledImageData(img, maxSize) {
-            const width = img.naturalWidth;
-            const height = img.naturalHeight;
-            const scale = Math.min(1, maxSize / Math.max(width, height));
-            const canvas = document.getElementById('scanCanvas');
+        function renderCropOverlay() {
+            if (!cropState) return;
+            const poly = document.getElementById('cropPolygon');
+            const pts = [cropState.tl, cropState.tr, cropState.br, cropState.bl];
+            poly.setAttribute('points', pts.map(p => p.x + ',' + p.y).join(' '));
+            const order = { t: ['tl', 'tr'], r: ['tr', 'br'], b: ['br', 'bl'], l: ['bl', 'tl'] };
+            document.querySelectorAll('#scanOverlay .crop-edge').forEach(line => {
+                const edge = line.getAttribute('data-edge');
+                const [a, b] = order[edge];
+                line.setAttribute('x1', cropState[a].x);
+                line.setAttribute('y1', cropState[a].y);
+                line.setAttribute('x2', cropState[b].x);
+                line.setAttribute('y2', cropState[b].y);
+            });
+            document.querySelectorAll('#scanOverlay .crop-handle').forEach(h => {
+                const key = h.getAttribute('data-handle');
+                h.setAttribute('cx', cropState[key].x);
+                h.setAttribute('cy', cropState[key].y);
+            });
+        }
+
+        function clampToImage(point) {
+            point.x = Math.max(0, Math.min(scanCaptureNaturalW, point.x));
+            point.y = Math.max(0, Math.min(scanCaptureNaturalH, point.y));
+        }
+
+        // SVG screen→user coordinate conversion (layout-safe drag).
+        function svgPointFromEvent(event) {
+            const svg = document.getElementById('scanOverlay');
+            const pt = svg.createSVGPoint();
+            pt.x = event.clientX;
+            pt.y = event.clientY;
+            const ctm = svg.getScreenCTM();
+            if (!ctm) return { x: 0, y: 0 };
+            const inv = ctm.inverse();
+            const mapped = pt.matrixTransform(inv);
+            return { x: mapped.x, y: mapped.y };
+        }
+
+        (function setupCropDrag() {
+            const overlay = document.getElementById('scanOverlay');
+            overlay.addEventListener('pointerdown', event => {
+                if (scanMode !== 'review' || !cropState) return;
+                const target = event.target;
+                const handle = target.getAttribute && target.getAttribute('data-handle');
+                const edge = target.getAttribute && target.getAttribute('data-edge');
+                if (!handle && !edge) return;
+                event.preventDefault();
+                const start = svgPointFromEvent(event);
+                scanDragState = {
+                    mode: handle ? 'handle' : 'edge',
+                    key: handle || edge,
+                    startPt: start,
+                    startCorners: JSON.parse(JSON.stringify(cropState))
+                };
+                try { overlay.setPointerCapture(event.pointerId); } catch (e) {}
+            });
+            overlay.addEventListener('pointermove', event => {
+                if (!scanDragState) return;
+                const cur = svgPointFromEvent(event);
+                const dx = cur.x - scanDragState.startPt.x;
+                const dy = cur.y - scanDragState.startPt.y;
+                const start = scanDragState.startCorners;
+                if (scanDragState.mode === 'handle') {
+                    const k = scanDragState.key;
+                    cropState[k] = { x: start[k].x + dx, y: start[k].y + dy };
+                    clampToImage(cropState[k]);
+                } else {
+                    const edges = { t: ['tl', 'tr'], r: ['tr', 'br'], b: ['br', 'bl'], l: ['bl', 'tl'] };
+                    edges[scanDragState.key].forEach(k => {
+                        cropState[k] = { x: start[k].x + dx, y: start[k].y + dy };
+                        clampToImage(cropState[k]);
+                    });
+                }
+                renderCropOverlay();
+            });
+            const endDrag = event => {
+                if (!scanDragState) return;
+                scanDragState = null;
+                try { overlay.releasePointerCapture(event.pointerId); } catch (e) {}
+            };
+            overlay.addEventListener('pointerup', endDrag);
+            overlay.addEventListener('pointercancel', endDrag);
+            overlay.addEventListener('pointerleave', endDrag);
+        })();
+
+        // ─── One-shot edge detection ──────────────────────────────────────
+        function detectAndApplyQuad() {
+            const img = document.getElementById('scanImage');
+            if (!img.naturalWidth) return;
+            const detector = window.JScanner && window.JScanner.detectQuad
+                ? window.JScanner.detectQuad
+                : detectPageQuad;
+            const detected = detector(img);
+            setCropFromCorners(detected);
+        }
+
+        function detectPageQuad(img) {
+            const naturalW = img.naturalWidth;
+            const naturalH = img.naturalHeight;
+            const maxDim = 600;
+            const scale = Math.min(1, maxDim / Math.max(naturalW, naturalH));
+            const w = Math.max(1, Math.round(naturalW * scale));
+            const h = Math.max(1, Math.round(naturalH * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
             const ctx = canvas.getContext('2d');
-            const targetWidth = Math.max(1, Math.round(width * scale));
-            const targetHeight = Math.max(1, Math.round(height * scale));
-            canvas.width = targetWidth;
-            canvas.height = targetHeight;
-            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-            return {
-                imageData: ctx.getImageData(0, 0, targetWidth, targetHeight),
-                width: targetWidth,
-                height: targetHeight
-            };
-        }
+            ctx.drawImage(img, 0, 0, w, h);
+            const imageData = ctx.getImageData(0, 0, w, h);
 
-        function detectEdges(imageData, width, height) {
-            const data = imageData.data;
-            const grayscale = new Uint8ClampedArray(width * height);
-            for (let i = 0; i < width * height; i++) {
-                const offset = i * 4;
-                const r = data[offset];
-                const g = data[offset + 1];
-                const b = data[offset + 2];
-                grayscale[i] = (r * 0.299 + g * 0.587 + b * 0.114) | 0;
+            // Grayscale.
+            const gray = new Uint8ClampedArray(w * h);
+            const d = imageData.data;
+            for (let i = 0; i < w * h; i++) {
+                gray[i] = (d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114) | 0;
             }
-
-            const blurred = new Uint8ClampedArray(width * height);
-            for (let y = 1; y < height - 1; y++) {
-                for (let x = 1; x < width - 1; x++) {
-                    const idx = y * width + x;
-                    const sum = (
-                        grayscale[idx - width - 1] + grayscale[idx - width] + grayscale[idx - width + 1]
-                        + grayscale[idx - 1] + grayscale[idx] + grayscale[idx + 1]
-                        + grayscale[idx + width - 1] + grayscale[idx + width] + grayscale[idx + width + 1]
-                    );
-                    blurred[idx] = (sum / 9) | 0;
-                }
-            }
-
-            const edges = [];
-            const magnitudes = new Uint8ClampedArray(width * height);
-            let maxMag = 0;
-            for (let y = 1; y < height - 1; y += 2) {
-                for (let x = 1; x < width - 1; x += 2) {
-                    const idx = y * width + x;
-                    const gx = (
-                        -blurred[idx - width - 1] - 2 * blurred[idx - 1] - blurred[idx + width - 1]
-                        + blurred[idx - width + 1] + 2 * blurred[idx + 1] + blurred[idx + width + 1]
-                    );
-                    const gy = (
-                        -blurred[idx - width - 1] - 2 * blurred[idx - width] - blurred[idx - width + 1]
-                        + blurred[idx + width - 1] + 2 * blurred[idx + width] + blurred[idx + width + 1]
-                    );
-                    const mag = Math.sqrt(gx * gx + gy * gy);
-                    if (mag > maxMag) {
-                        maxMag = mag;
+            // 3x3 box blur (cheap denoise).
+            const blur = new Uint8ClampedArray(w * h);
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    let s = 0;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            s += gray[(y + dy) * w + (x + dx)];
+                        }
                     }
-                    magnitudes[idx] = mag > 255 ? 255 : mag;
+                    blur[y * w + x] = (s / 9) | 0;
                 }
             }
-
-            const threshold = otsuThreshold(magnitudes, width, height);
-            for (let y = 1; y < height - 1; y += 2) {
-                for (let x = 1; x < width - 1; x += 2) {
-                    const idx = y * width + x;
-                    if (magnitudes[idx] >= threshold) {
-                        edges.push({ x, y });
-                    }
-                }
-            }
-            return edges;
-        }
-
-        function otsuThreshold(magnitudes, width, height) {
+            // Otsu threshold to get bright pixels.
             const hist = new Array(256).fill(0);
-            for (let i = 0; i < width * height; i++) {
-                const value = magnitudes[i];
-                if (value > 0) {
-                    hist[value] += 1;
-                }
-            }
-            const total = width * height;
+            for (let i = 0; i < w * h; i++) hist[blur[i]]++;
+            const total = w * h;
             let sum = 0;
-            for (let i = 0; i < 256; i++) {
-                sum += i * hist[i];
-            }
-            let sumB = 0;
-            let wB = 0;
-            let wF = 0;
-            let maxVar = 0;
-            let threshold = 64;
-            for (let i = 0; i < 256; i++) {
-                wB += hist[i];
-                if (!wB) {
-                    continue;
-                }
+            for (let i = 0; i < 256; i++) sum += i * hist[i];
+            let sumB = 0, wB = 0, wF = 0, maxVar = 0, threshold = 64;
+            for (let t = 0; t < 256; t++) {
+                wB += hist[t];
+                if (!wB) continue;
                 wF = total - wB;
-                if (!wF) {
-                    break;
-                }
-                sumB += i * hist[i];
+                if (!wF) break;
+                sumB += t * hist[t];
                 const mB = sumB / wB;
                 const mF = (sum - sumB) / wF;
                 const between = wB * wF * (mB - mF) * (mB - mF);
-                if (between > maxVar) {
-                    maxVar = between;
-                    threshold = i;
+                if (between > maxVar) { maxVar = between; threshold = t; }
+            }
+            // Slightly bias toward bright side (paper usually brightest).
+            threshold = Math.max(threshold - 10, 64);
+            const mask = new Uint8Array(w * h);
+            for (let i = 0; i < w * h; i++) {
+                mask[i] = blur[i] >= threshold ? 1 : 0;
+            }
+
+            // Connected-component labeling; pick largest interior component.
+            const labels = new Int32Array(w * h);
+            let nextLabel = 1;
+            const parent = [0];
+            const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+            const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const i = y * w + x;
+                    if (!mask[i]) continue;
+                    const left = x > 0 ? labels[i - 1] : 0;
+                    const up = y > 0 ? labels[i - w] : 0;
+                    if (left && up) { labels[i] = Math.min(left, up); union(left, up); }
+                    else if (left) labels[i] = left;
+                    else if (up) labels[i] = up;
+                    else { labels[i] = nextLabel; parent[nextLabel] = nextLabel; nextLabel++; }
                 }
             }
-            return Math.max(40, threshold);
-        }
-
-        function estimateQuadFromEdges(points, width, height, minPoints) {
-            if (!points.length || points.length < minPoints) {
-                return null;
+            const sizes = new Map();
+            const bbox = new Map();
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const i = y * w + x;
+                    if (!labels[i]) continue;
+                    const root = find(labels[i]);
+                    sizes.set(root, (sizes.get(root) || 0) + 1);
+                    const bb = bbox.get(root) || { minX: x, maxX: x, minY: y, maxY: y };
+                    if (x < bb.minX) bb.minX = x;
+                    if (x > bb.maxX) bb.maxX = x;
+                    if (y < bb.minY) bb.minY = y;
+                    if (y > bb.maxY) bb.maxY = y;
+                    bbox.set(root, bb);
+                }
             }
-            let meanX = 0;
-            let meanY = 0;
-            points.forEach(point => {
-                meanX += point.x;
-                meanY += point.y;
-            });
-            meanX /= points.length;
-            meanY /= points.length;
 
-            let covXX = 0;
-            let covYY = 0;
-            let covXY = 0;
-            points.forEach(point => {
-                const dx = point.x - meanX;
-                const dy = point.y - meanY;
-                covXX += dx * dx;
-                covYY += dy * dy;
-                covXY += dx * dy;
-            });
-
-            const angle = 0.5 * Math.atan2(2 * covXY, covXX - covYY);
-            const cosA = Math.cos(-angle);
-            const sinA = Math.sin(-angle);
-
-            let minX = Infinity;
-            let maxX = -Infinity;
-            let minY = Infinity;
-            let maxY = -Infinity;
-            points.forEach(point => {
-                const dx = point.x - meanX;
-                const dy = point.y - meanY;
-                const rx = dx * cosA - dy * sinA;
-                const ry = dx * sinA + dy * cosA;
-                if (rx < minX) minX = rx;
-                if (rx > maxX) maxX = rx;
-                if (ry < minY) minY = ry;
-                if (ry > maxY) maxY = ry;
+            // Score components: prefer large, well-inside frame.
+            let bestRoot = 0;
+            let bestScore = 0;
+            sizes.forEach((size, root) => {
+                if (size < total * 0.08) return;
+                const bb = bbox.get(root);
+                const bw = bb.maxX - bb.minX;
+                const bh = bb.maxY - bb.minY;
+                if (bw < w * 0.25 || bh < h * 0.25) return;
+                // Penalize blobs that touch all 4 frame edges (likely background).
+                const touchesAll =
+                    bb.minX <= 1 && bb.maxX >= w - 2 &&
+                    bb.minY <= 1 && bb.maxY >= h - 2;
+                let score = size;
+                if (touchesAll) score *= 0.35;
+                if (score > bestScore) { bestScore = score; bestRoot = root; }
             });
 
-            const padX = (maxX - minX) * 0.02;
-            const padY = (maxY - minY) * 0.02;
-            minX -= padX;
-            maxX += padX;
-            minY -= padY;
-            maxY += padY;
+            if (!bestRoot) {
+                return inset(naturalW, naturalH);
+            }
 
-            const corners = [
-                { x: minX, y: minY },
-                { x: maxX, y: minY },
-                { x: maxX, y: maxY },
-                { x: minX, y: maxY }
-            ].map(point => {
-                const rx = point.x * Math.cos(angle) - point.y * Math.sin(angle) + meanX;
-                const ry = point.x * Math.sin(angle) + point.y * Math.cos(angle) + meanY;
-                return { x: rx, y: ry };
-            });
+            // Collect boundary points of the chosen component.
+            const points = [];
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const i = y * w + x;
+                    if (!labels[i] || find(labels[i]) !== bestRoot) continue;
+                    // Boundary if any 4-neighbour is outside the component.
+                    const isBoundary =
+                        x === 0 || y === 0 || x === w - 1 || y === h - 1 ||
+                        find(labels[i - 1] || 0) !== bestRoot ||
+                        find(labels[i + 1] || 0) !== bestRoot ||
+                        find(labels[i - w] || 0) !== bestRoot ||
+                        find(labels[i + w] || 0) !== bestRoot;
+                    if (isBoundary) points.push({ x, y });
+                }
+            }
+            if (points.length < 30) {
+                return inset(naturalW, naturalH);
+            }
+            // Pick 4 extreme corners by (x+y), (x-y).
+            let tl = points[0], tr = points[0], br = points[0], bl = points[0];
+            for (const p of points) {
+                if (p.x + p.y < tl.x + tl.y) tl = p;
+                if (p.x - p.y > tr.x - tr.y) tr = p;
+                if (p.x + p.y > br.x + br.y) br = p;
+                if (p.y - p.x > bl.y - bl.x) bl = p;
+            }
+            const sx = naturalW / w;
+            const sy = naturalH / h;
+            const corners = {
+                tl: { x: tl.x * sx, y: tl.y * sy },
+                tr: { x: tr.x * sx, y: tr.y * sy },
+                br: { x: br.x * sx, y: br.y * sy },
+                bl: { x: bl.x * sx, y: bl.y * sy }
+            };
+            // Sanity: minimum quad area.
+            if (quadArea(corners) < naturalW * naturalH * 0.1) {
+                return inset(naturalW, naturalH);
+            }
+            return corners;
+        }
 
+        function quadArea(c) {
+            const pts = [c.tl, c.tr, c.br, c.bl];
+            let area = 0;
+            for (let i = 0; i < 4; i++) {
+                const a = pts[i];
+                const b = pts[(i + 1) % 4];
+                area += a.x * b.y - b.x * a.y;
+            }
+            return Math.abs(area) / 2;
+        }
+
+        function inset(w, h) {
+            const padX = w * 0.1, padY = h * 0.1;
             return {
-                tl: corners[0],
-                tr: corners[1],
-                br: corners[2],
-                bl: corners[3]
+                tl: { x: padX, y: padY },
+                tr: { x: w - padX, y: padY },
+                br: { x: w - padX, y: h - padY },
+                bl: { x: padX, y: h - padY }
             };
         }
 
-        function fallbackCorners(width, height) {
-            const paddingX = width * 0.1;
-            const paddingY = height * 0.1;
-            return {
-                tl: { x: paddingX, y: paddingY },
-                tr: { x: width - paddingX, y: paddingY },
-                br: { x: width - paddingX, y: height - paddingY },
-                bl: { x: paddingX, y: height - paddingY }
-            };
-        }
-
-        function getCroppedDataUrl() {
+        // ─── Perspective warp + enhancement ──────────────────────────────
+        function getProcessedDataUrl(rawDataUrl, corners, rotation) {
+            if (window.JScanner && window.JScanner.processImage) {
+                return window.JScanner.processImage({
+                    dataUrl: rawDataUrl,
+                    corners: corners,
+                    rotation: rotation,
+                    autoEnhance: scanSettings.autoEnhance,
+                    filter: scanSettings.filter
+                });
+            }
+            // Fallback to the in-file implementation if the local engine is missing.
             return new Promise(resolve => {
-                if (!scanImageDataUrl || !cropState) {
-                    resolve('');
-                    return;
-                }
-                const img = document.getElementById('scanImage');
-                const preview = document.getElementById('scanPreview');
-                const displayRect = preview.getBoundingClientRect();
-                const imageRect = img.getBoundingClientRect();
-                const scaleX = img.naturalWidth / imageRect.width;
-                const scaleY = img.naturalHeight / imageRect.height;
-                const offsetX = imageRect.left - displayRect.left;
-                const offsetY = imageRect.top - displayRect.top;
+                if (!rawDataUrl || !corners) { resolve(''); return; }
+                const tmp = new Image();
+                tmp.onload = () => {
+                    const dstWidth = Math.max(distance(corners.tl, corners.tr), distance(corners.bl, corners.br));
+                    const dstHeight = Math.max(distance(corners.tl, corners.bl), distance(corners.tr, corners.br));
+                    const dst = {
+                        tl: { x: 0, y: 0 },
+                        tr: { x: dstWidth, y: 0 },
+                        br: { x: dstWidth, y: dstHeight },
+                        bl: { x: 0, y: dstHeight }
+                    };
+                    const source = document.createElement('canvas');
+                    source.width = tmp.naturalWidth;
+                    source.height = tmp.naturalHeight;
+                    source.getContext('2d').drawImage(tmp, 0, 0);
+                    const sourceData = source.getContext('2d').getImageData(0, 0, source.width, source.height);
 
-                const src = {
-                    tl: { x: (cropState.tl.x - offsetX) * scaleX, y: (cropState.tl.y - offsetY) * scaleY },
-                    tr: { x: (cropState.tr.x - offsetX) * scaleX, y: (cropState.tr.y - offsetY) * scaleY },
-                    br: { x: (cropState.br.x - offsetX) * scaleX, y: (cropState.br.y - offsetY) * scaleY },
-                    bl: { x: (cropState.bl.x - offsetX) * scaleX, y: (cropState.bl.y - offsetY) * scaleY }
-                };
-
-                const destWidth = Math.max(distance(src.tl, src.tr), distance(src.bl, src.br));
-                const destHeight = Math.max(distance(src.tl, src.bl), distance(src.tr, src.br));
-                const dst = {
-                    tl: { x: 0, y: 0 },
-                    tr: { x: destWidth, y: 0 },
-                    br: { x: destWidth, y: destHeight },
-                    bl: { x: 0, y: destHeight }
-                };
-
-                const canvas = document.getElementById('scanCanvas');
-                canvas.width = Math.round(destWidth);
-                canvas.height = Math.round(destHeight);
-                const ctx = canvas.getContext('2d');
-                const tempImg = new Image();
-                tempImg.onload = () => {
-                    const sourceCanvas = document.createElement('canvas');
-                    sourceCanvas.width = tempImg.naturalWidth;
-                    sourceCanvas.height = tempImg.naturalHeight;
-                    const sourceCtx = sourceCanvas.getContext('2d');
-                    sourceCtx.drawImage(tempImg, 0, 0);
-
-                    let workingCanvas = sourceCanvas;
-                    let workingSrc = src;
-                    const deskewAngle = Math.atan2(src.tr.y - src.tl.y, src.tr.x - src.tl.x);
-                    if (Math.abs(deskewAngle) > 0.03) {
-                        const rotated = rotateImageAndPoints(sourceCanvas, src, -deskewAngle);
-                        workingCanvas = rotated.canvas;
-                        workingSrc = rotated.points;
-                    }
-
-                    const sourceData = workingCanvas.getContext('2d').getImageData(0, 0, workingCanvas.width, workingCanvas.height);
-                    const dstData = ctx.createImageData(canvas.width, canvas.height);
-                    const transform = computePerspectiveTransform(workingSrc, dst);
-                    if (!transform) {
-                        resolve('');
-                        return;
-                    }
+                    const warp = document.createElement('canvas');
+                    warp.width = Math.round(dstWidth);
+                    warp.height = Math.round(dstHeight);
+                    const wctx = warp.getContext('2d');
+                    const out = wctx.createImageData(warp.width, warp.height);
+                    const transform = computePerspectiveTransform(corners, dst);
+                    if (!transform) { resolve(''); return; }
                     const inv = invert3x3(transform);
-                    if (!inv) {
-                        resolve('');
-                        return;
-                    }
-                    for (let y = 0; y < canvas.height; y++) {
-                        for (let x = 0; x < canvas.width; x++) {
-                            const srcPoint = applyTransform(inv, x, y);
-                            const color = sampleBilinear(sourceData, workingCanvas.width, workingCanvas.height, srcPoint.x, srcPoint.y);
-                            const offset = (y * canvas.width + x) * 4;
-                            dstData.data[offset] = color.r;
-                            dstData.data[offset + 1] = color.g;
-                            dstData.data[offset + 2] = color.b;
-                            dstData.data[offset + 3] = 255;
+                    if (!inv) { resolve(''); return; }
+                    for (let y = 0; y < warp.height; y++) {
+                        for (let x = 0; x < warp.width; x++) {
+                            const srcPt = applyTransform(inv, x, y);
+                            const color = sampleBilinear(sourceData, source.width, source.height, srcPt.x, srcPt.y);
+                            const offset = (y * warp.width + x) * 4;
+                            out.data[offset] = color.r;
+                            out.data[offset + 1] = color.g;
+                            out.data[offset + 2] = color.b;
+                            out.data[offset + 3] = 255;
                         }
                     }
-                    applyAutoEnhance(dstData, scanSettings.autoEnhance);
-                    ctx.putImageData(dstData, 0, 0);
-                    resolve(canvas.toDataURL('image/png'));
+                    if (scanSettings.autoEnhance) enhance(out);
+                    applyFilter(out, scanSettings.filter);
+                    wctx.putImageData(out, 0, 0);
+
+                    let finalCanvas = warp;
+                    if (rotation && rotation % 360 !== 0) {
+                        finalCanvas = rotateCanvas(warp, rotation);
+                    }
+                    resolve(finalCanvas.toDataURL('image/png'));
                 };
-                tempImg.src = scanImageDataUrl;
+                tmp.src = rawDataUrl;
             });
+        }
+
+        function rotateCanvas(canvas, degrees) {
+            const rad = (degrees % 360) * Math.PI / 180;
+            const swap = degrees % 180 !== 0;
+            const w = swap ? canvas.height : canvas.width;
+            const h = swap ? canvas.width : canvas.height;
+            const out = document.createElement('canvas');
+            out.width = w;
+            out.height = h;
+            const ctx = out.getContext('2d');
+            ctx.translate(w / 2, h / 2);
+            ctx.rotate(rad);
+            ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+            return out;
+        }
+
+        function enhance(imageData) {
+            const data = imageData.data;
+            const w = imageData.width;
+            const h = imageData.height;
+            const pixelCount = w * h;
+            // Per-channel histogram stretch.
+            const histR = new Array(256).fill(0);
+            const histG = new Array(256).fill(0);
+            const histB = new Array(256).fill(0);
+            for (let i = 0; i < pixelCount; i++) {
+                const o = i * 4;
+                histR[data[o]]++;
+                histG[data[o + 1]]++;
+                histB[data[o + 2]]++;
+            }
+            const loR = percentile(histR, pixelCount, 0.02);
+            const hiR = percentile(histR, pixelCount, 0.98);
+            const loG = percentile(histG, pixelCount, 0.02);
+            const hiG = percentile(histG, pixelCount, 0.98);
+            const loB = percentile(histB, pixelCount, 0.02);
+            const hiB = percentile(histB, pixelCount, 0.98);
+            const rngR = Math.max(10, hiR - loR);
+            const rngG = Math.max(10, hiG - loG);
+            const rngB = Math.max(10, hiB - loB);
+            // Gray-world WB.
+            let meanR = 0, meanG = 0, meanB = 0;
+            for (let i = 0; i < pixelCount; i++) {
+                const o = i * 4;
+                meanR += data[o]; meanG += data[o + 1]; meanB += data[o + 2];
+            }
+            meanR /= pixelCount; meanG /= pixelCount; meanB /= pixelCount;
+            const gray = (meanR + meanG + meanB) / 3;
+            const wbR = gray / Math.max(1, meanR);
+            const wbG = gray / Math.max(1, meanG);
+            const wbB = gray / Math.max(1, meanB);
+            // Pass 1: stretch + WB.
+            const stretched = new Uint8ClampedArray(data.length);
+            for (let i = 0; i < pixelCount; i++) {
+                const o = i * 4;
+                stretched[o]     = clamp255(((data[o]     - loR) * 255 / rngR) * wbR);
+                stretched[o + 1] = clamp255(((data[o + 1] - loG) * 255 / rngG) * wbG);
+                stretched[o + 2] = clamp255(((data[o + 2] - loB) * 255 / rngB) * wbB);
+                stretched[o + 3] = 255;
+            }
+            // Pass 2: unsharp mask. Simple 3x3 blur, then out = orig + amount*(orig - blur).
+            const amount = 0.55;
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const o = (y * w + x) * 4;
+                    for (let c = 0; c < 3; c++) {
+                        const orig = stretched[o + c];
+                        let sum = 0, count = 0;
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dx = -1; dx <= 1; dx++) {
+                                const ny = y + dy, nx = x + dx;
+                                if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+                                sum += stretched[(ny * w + nx) * 4 + c];
+                                count++;
+                            }
+                        }
+                        const blurv = sum / count;
+                        data[o + c] = clamp255(orig + amount * (orig - blurv));
+                    }
+                    data[o + 3] = 255;
+                }
+            }
+        }
+
+        function applyFilter(imageData, filter) {
+            if (filter === 'color') return;
+            const data = imageData.data;
+            const w = imageData.width, h = imageData.height;
+            const pixelCount = w * h;
+            if (filter === 'gray') {
+                for (let i = 0; i < pixelCount; i++) {
+                    const o = i * 4;
+                    const lum = data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+                    data[o] = data[o + 1] = data[o + 2] = clamp255(lum);
+                }
+                return;
+            }
+            // B&W: adaptive threshold (local mean - bias).
+            // First compute grayscale array.
+            const gray = new Uint8ClampedArray(pixelCount);
+            for (let i = 0; i < pixelCount; i++) {
+                const o = i * 4;
+                gray[i] = (data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114) | 0;
+            }
+            // Compute summed-area table for fast local mean.
+            const sat = new Float64Array(pixelCount);
+            for (let y = 0; y < h; y++) {
+                let rowSum = 0;
+                for (let x = 0; x < w; x++) {
+                    rowSum += gray[y * w + x];
+                    sat[y * w + x] = (y > 0 ? sat[(y - 1) * w + x] : 0) + rowSum;
+                }
+            }
+            const window = Math.max(7, Math.floor(Math.min(w, h) / 32));
+            const bias = 8;
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const x1 = Math.max(0, x - window);
+                    const y1 = Math.max(0, y - window);
+                    const x2 = Math.min(w - 1, x + window);
+                    const y2 = Math.min(h - 1, y + window);
+                    const A = (y1 > 0 && x1 > 0) ? sat[(y1 - 1) * w + (x1 - 1)] : 0;
+                    const B = (y1 > 0) ? sat[(y1 - 1) * w + x2] : 0;
+                    const C = (x1 > 0) ? sat[y2 * w + (x1 - 1)] : 0;
+                    const D = sat[y2 * w + x2];
+                    const area = (x2 - x1 + 1) * (y2 - y1 + 1);
+                    const mean = (D - B - C + A) / area;
+                    const o = (y * w + x) * 4;
+                    const v = gray[y * w + x] >= (mean - bias) ? 255 : 0;
+                    data[o] = data[o + 1] = data[o + 2] = v;
+                }
+            }
+        }
+
+        function clamp255(v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+
+        function percentile(hist, total, p) {
+            const target = total * p;
+            let acc = 0;
+            for (let i = 0; i < 256; i++) {
+                acc += hist[i];
+                if (acc >= target) return i;
+            }
+            return 255;
         }
 
         function distance(a, b) {
-            const dx = a.x - b.x;
-            const dy = a.y - b.y;
+            const dx = a.x - b.x, dy = a.y - b.y;
             return Math.sqrt(dx * dx + dy * dy);
-        }
-
-        function rotateImageAndPoints(sourceCanvas, points, angle) {
-            const width = sourceCanvas.width;
-            const height = sourceCanvas.height;
-            const cx = width / 2;
-            const cy = height / 2;
-            const cosA = Math.cos(angle);
-            const sinA = Math.sin(angle);
-
-            const corners = [
-                { x: 0, y: 0 },
-                { x: width, y: 0 },
-                { x: width, y: height },
-                { x: 0, y: height }
-            ].map(pt => {
-                const dx = pt.x - cx;
-                const dy = pt.y - cy;
-                return {
-                    x: dx * cosA - dy * sinA,
-                    y: dx * sinA + dy * cosA
-                };
-            });
-
-            const minX = Math.min(...corners.map(pt => pt.x));
-            const maxX = Math.max(...corners.map(pt => pt.x));
-            const minY = Math.min(...corners.map(pt => pt.y));
-            const maxY = Math.max(...corners.map(pt => pt.y));
-            const newWidth = Math.ceil(maxX - minX);
-            const newHeight = Math.ceil(maxY - minY);
-
-            const rotatedCanvas = document.createElement('canvas');
-            rotatedCanvas.width = newWidth;
-            rotatedCanvas.height = newHeight;
-            const ctx = rotatedCanvas.getContext('2d');
-            ctx.translate(newWidth / 2, newHeight / 2);
-            ctx.rotate(angle);
-            ctx.drawImage(sourceCanvas, -cx, -cy);
-
-            const rotatePoint = (pt) => {
-                const dx = pt.x - cx;
-                const dy = pt.y - cy;
-                return {
-                    x: dx * cosA - dy * sinA + newWidth / 2,
-                    y: dx * sinA + dy * cosA + newHeight / 2
-                };
-            };
-
-            return {
-                canvas: rotatedCanvas,
-                points: {
-                    tl: rotatePoint(points.tl),
-                    tr: rotatePoint(points.tr),
-                    br: rotatePoint(points.br),
-                    bl: rotatePoint(points.bl)
-                }
-            };
         }
 
         function computePerspectiveTransform(src, dst) {
@@ -2725,9 +2377,7 @@
             ];
             const vector = [dst.tl.x, dst.tl.y, dst.tr.x, dst.tr.y, dst.br.x, dst.br.y, dst.bl.x, dst.bl.y];
             const solution = solveLinearSystem(matrix, vector);
-            if (!solution) {
-                return null;
-            }
+            if (!solution) return null;
             return [
                 [solution[0], solution[1], solution[2]],
                 [solution[3], solution[4], solution[5]],
@@ -2817,85 +2467,190 @@
                 lerp(imageData.data[idx01 + 2], imageData.data[idx11 + 2], dx), dy);
             return { r, g, b };
         }
+        function lerp(a, b, t) { return a + (b - a) * t; }
 
-        function lerp(a, b, t) {
-            return a + (b - a) * t;
+        // ─── Multi-page ──────────────────────────────────────────────────
+        function addScanPage() {
+            if (scanMode !== 'review' || !scanRawDataUrl || !cropState) return;
+            commitCurrentPage().then(() => {
+                resetScanReview();
+                startScanCamera();
+            });
         }
 
-        function applyAutoEnhance(imageData, enabled) {
-            if (!enabled) {
+        function commitCurrentPage() {
+            return getProcessedDataUrl(scanRawDataUrl, cropState, scanCurrentRotation).then(processed => {
+                if (!processed) return;
+                const page = {
+                    id: 'scan-' + Date.now() + '-' + scanPages.length,
+                    rawDataUrl: scanRawDataUrl,
+                    naturalW: scanCaptureNaturalW,
+                    naturalH: scanCaptureNaturalH,
+                    corners: JSON.parse(JSON.stringify(cropState)),
+                    rotation: scanCurrentRotation,
+                    processedDataUrl: processed
+                };
+                scanPages.push(page);
+                selectedScanIndex = scanPages.length - 1;
+                renderScanPages();
+            });
+        }
+
+        function renderScanPages() {
+            const list = document.getElementById('scanPagesList');
+            const count = document.getElementById('scanPagesCount');
+            list.innerHTML = '';
+            count.textContent = String(scanPages.length);
+            scanPages.forEach((page, index) => {
+                const item = document.createElement('div');
+                item.className = 'scan-page-item' + (index === selectedScanIndex ? ' is-active' : '');
+                item.addEventListener('click', () => selectScanPage(index));
+                const img = document.createElement('img');
+                img.className = 'scan-page-thumb';
+                img.src = page.processedDataUrl;
+                const meta = document.createElement('div');
+                meta.className = 'scan-page-meta';
+                meta.textContent = 'Page ' + (index + 1);
+                const remove = document.createElement('button');
+                remove.className = 'scan-page-remove';
+                remove.type = 'button';
+                remove.textContent = 'Remove';
+                remove.addEventListener('click', e => { e.stopPropagation(); removeScanPage(index); });
+                item.appendChild(img);
+                item.appendChild(meta);
+                item.appendChild(remove);
+                list.appendChild(item);
+            });
+            updateScanActions();
+        }
+
+        function selectScanPage(index) {
+            const page = scanPages[index];
+            if (!page) return;
+            selectedScanIndex = index;
+            // Re-enter review for this page.
+            stopScanCamera();
+            scanRawDataUrl = page.rawDataUrl;
+            scanCaptureNaturalW = page.naturalW;
+            scanCaptureNaturalH = page.naturalH;
+            scanCurrentRotation = page.rotation || 0;
+            const img = document.getElementById('scanImage');
+            const video = document.getElementById('scanVideo');
+            const overlay = document.getElementById('scanOverlay');
+            img.onload = () => {
+                overlay.setAttribute('viewBox', '0 0 ' + page.naturalW + ' ' + page.naturalH);
+                positionOverlayToImage();
+                setCropFromCorners(page.corners);
+                setScanMode('review');
+            };
+            img.src = page.rawDataUrl;
+            img.style.display = 'block';
+            video.style.display = 'none';
+            renderScanPages();
+        }
+
+        function removeScanPage(index) {
+            scanPages.splice(index, 1);
+            if (selectedScanIndex >= scanPages.length) {
+                selectedScanIndex = scanPages.length - 1;
+            }
+            renderScanPages();
+        }
+
+        function doneScan() {
+            const exportPages = pages => {
+                if (!pages.length) return;
+                if (scanSettings.format === 'pdf') {
+                    createPdfFromDataUrls(pages.map(p => p.processedDataUrl));
+                } else if (pages.length === 1) {
+                    injectScanAsFile(pages[0].processedDataUrl, 'scan', 'image/png');
+                    closeScanModal();
+                } else {
+                    stitchPagesToFile(pages.map(p => p.processedDataUrl), 'image/png');
+                }
+            };
+            if (scanMode === 'review' && scanRawDataUrl && cropState) {
+                commitCurrentPage().then(() => exportPages(scanPages));
+            } else {
+                exportPages(scanPages);
+            }
+        }
+
+        function stitchPagesToFile(dataUrls, mimeType) {
+            Promise.all(dataUrls.map(loadImage)).then(imgs => {
+                const margin = 24;
+                const targetWidth = Math.max(...imgs.map(img => img.naturalWidth));
+                const scaled = imgs.map(img => {
+                    const scale = targetWidth / img.naturalWidth;
+                    return { img, width: targetWidth, height: Math.round(img.naturalHeight * scale) };
+                });
+                const totalHeight = scaled.reduce((s, it) => s + it.height, 0) + margin * (scaled.length + 1);
+                const canvas = document.createElement('canvas');
+                canvas.width = targetWidth + margin * 2;
+                canvas.height = totalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                let y = margin;
+                scaled.forEach(item => {
+                    ctx.drawImage(item.img, margin, y, item.width, item.height);
+                    y += item.height + margin;
+                });
+                injectScanAsFile(canvas.toDataURL(mimeType || 'image/png'), 'scan-stack', mimeType || 'image/png');
+                closeScanModal();
+            });
+        }
+
+        function createPdfFromDataUrls(dataUrls) {
+            const pdfLib = window.jspdf && window.jspdf.jsPDF;
+            if (!pdfLib) {
+                alert('PDF export is still loading. Please try again in a moment.');
                 return;
             }
-            const data = imageData.data;
-            const hist = new Array(256).fill(0);
-            const pixelCount = imageData.width * imageData.height;
-            for (let i = 0; i < pixelCount; i++) {
-                const offset = i * 4;
-                const r = data[offset];
-                const g = data[offset + 1];
-                const b = data[offset + 2];
-                const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-                hist[lum] += 1;
-            }
-
-            const low = findPercentile(hist, pixelCount, 0.03);
-            const high = findPercentile(hist, pixelCount, 0.97);
-            const range = Math.max(10, high - low);
-
-            for (let i = 0; i < pixelCount; i++) {
-                const offset = i * 4;
-                const r = data[offset];
-                const g = data[offset + 1];
-                const b = data[offset + 2];
-                const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                const normalized = Math.min(255, Math.max(0, (lum - low) * 255 / range));
-                const scale = lum > 0 ? normalized / lum : 1;
-                data[offset] = Math.min(255, Math.max(0, r * scale));
-                data[offset + 1] = Math.min(255, Math.max(0, g * scale));
-                data[offset + 2] = Math.min(255, Math.max(0, b * scale));
-            }
-
-            applyPaperBoost(imageData);
+            const pdf = new pdfLib({ unit: 'pt', format: 'a4' });
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 24;
+            const usableWidth = pageWidth - margin * 2;
+            const usableHeight = pageHeight - margin * 2;
+            Promise.all(dataUrls.map(loadImage)).then(imgs => {
+                imgs.forEach((img, index) => {
+                    const scale = Math.min(usableWidth / img.naturalWidth, usableHeight / img.naturalHeight);
+                    const width = img.naturalWidth * scale;
+                    const height = img.naturalHeight * scale;
+                    const x = (pageWidth - width) / 2;
+                    const y = (pageHeight - height) / 2;
+                    if (index > 0) pdf.addPage();
+                    pdf.addImage(img, 'PNG', x, y, width, height);
+                });
+                const blob = pdf.output('blob');
+                const file = new File([blob], 'scan-' + Date.now() + '.pdf', { type: 'application/pdf' });
+                const input = document.getElementById('imageInput');
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                updateUploadStatus();
+                closeScanModal();
+            });
         }
 
-        function applyPaperBoost(imageData) {
-            const data = imageData.data;
-            const pixelCount = imageData.width * imageData.height;
-            for (let i = 0; i < pixelCount; i++) {
-                const offset = i * 4;
-                const r = data[offset];
-                const g = data[offset + 1];
-                const b = data[offset + 2];
-                const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                const lift = lum > 180 ? (255 - lum) * 0.35 : 0;
-                data[offset] = Math.min(255, r + lift);
-                data[offset + 1] = Math.min(255, g + lift);
-                data[offset + 2] = Math.min(255, b + lift);
-            }
-        }
-
-        function findPercentile(hist, total, percentile) {
-            const target = total * percentile;
-            let cumulative = 0;
-            for (let i = 0; i < hist.length; i++) {
-                cumulative += hist[i];
-                if (cumulative >= target) {
-                    return i;
-                }
-            }
-            return 0;
+        function loadImage(src) {
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.src = src;
+            });
         }
 
         function injectScanAsFile(dataUrl, namePrefix, mimeType) {
             const input = document.getElementById('imageInput');
-            const prefix = namePrefix || 'scan';
             const type = mimeType || 'image/png';
             const extension = type === 'application/pdf' ? 'pdf' : 'png';
-            const filename = prefix + '-' + Date.now() + '.' + extension;
+            const filename = (namePrefix || 'scan') + '-' + Date.now() + '.' + extension;
             fetch(dataUrl)
                 .then(res => res.blob())
                 .then(blob => {
-                    const file = new File([blob], filename, { type: type });
+                    const file = new File([blob], filename, { type });
                     const dt = new DataTransfer();
                     dt.items.add(file);
                     input.files = dt.files;
@@ -2903,74 +2658,43 @@
                 });
         }
 
-        (function setupCropInteractions() {
-            const preview = document.getElementById('scanPreview');
-            const overlay = document.getElementById('scanOverlay');
-            let dragMode = null;
-            let startX = 0;
-            let startY = 0;
-            let startState = null;
+        function rotateScan() {
+            if (scanMode !== 'review') return;
+            scanCurrentRotation = (scanCurrentRotation + 90) % 360;
+        }
 
-            function onPointerDown(event) {
-                if (!cropState) {
-                    return;
-                }
-                const handle = event.target.getAttribute('data-handle');
-                dragMode = handle || 'move';
-                startX = event.clientX;
-                startY = event.clientY;
-                startState = {
-                    tl: { ...cropState.tl },
-                    tr: { ...cropState.tr },
-                    br: { ...cropState.br },
-                    bl: { ...cropState.bl }
-                };
-                overlay.setPointerCapture(event.pointerId);
-            }
+        // ─── Settings wiring ──────────────────────────────────────────────
+        function syncScanSettings() {
+            const format = document.getElementById('scanFormat');
+            const autoEnhance = document.getElementById('scanAutoEnhance');
+            if (format) scanSettings.format = format.value || 'png';
+            if (autoEnhance) scanSettings.autoEnhance = autoEnhance.checked;
+        }
 
-            function onPointerMove(event) {
-                if (!dragMode || !startState || !cropState) {
-                    return;
-                }
-                const deltaX = event.clientX - startX;
-                const deltaY = event.clientY - startY;
-                const bounds = preview.getBoundingClientRect();
-                const maxW = bounds.width;
-                const maxH = bounds.height;
-
-                if (dragMode === 'move') {
-                    ['tl', 'tr', 'br', 'bl'].forEach(key => {
-                        cropState[key].x = startState[key].x + deltaX;
-                        cropState[key].y = startState[key].y + deltaY;
-                        clampPoint(cropState[key], maxW, maxH);
-                    });
-                } else if (cropState[dragMode]) {
-                    cropState[dragMode].x = startState[dragMode].x + deltaX;
-                    cropState[dragMode].y = startState[dragMode].y + deltaY;
-                    clampPoint(cropState[dragMode], maxW, maxH);
-                }
-
-                positionCropHandles();
-            }
-
-            function onPointerUp(event) {
-                dragMode = null;
-                startState = null;
-                try {
-                    overlay.releasePointerCapture(event.pointerId);
-                } catch (error) {
-                    return;
-                }
-            }
-
-            overlay.addEventListener('pointerdown', event => {
-                if (event.target.classList.contains('crop-handle')) {
-                    onPointerDown(event);
-                }
+        function setScanFilter(name) {
+            scanSettings.filter = name;
+            document.querySelectorAll('.scan-seg').forEach(btn => {
+                const active = btn.getAttribute('data-filter') === name;
+                btn.classList.toggle('is-active', active);
+                btn.setAttribute('aria-selected', active ? 'true' : 'false');
             });
-            overlay.addEventListener('pointermove', onPointerMove);
-            overlay.addEventListener('pointerup', onPointerUp);
-            overlay.addEventListener('pointerleave', onPointerUp);
+        }
+
+        // Wire up scanner buttons and settings (idempotent, runs once at parse).
+        (function wireScannerControls() {
+            document.getElementById('scanCaptureBtn').addEventListener('click', captureScan);
+            document.getElementById('scanDetectBtn').addEventListener('click', detectAndApplyQuad);
+            document.getElementById('scanRotateBtn').addEventListener('click', rotateScan);
+            document.getElementById('scanRetakeBtn').addEventListener('click', retakeScan);
+            document.getElementById('scanAddBtn').addEventListener('click', addScanPage);
+            document.getElementById('scanDoneBtn').addEventListener('click', doneScan);
+            document.getElementById('scanCloseBtn').addEventListener('click', closeScanModal);
+            document.getElementById('scanFormat').addEventListener('change', syncScanSettings);
+            document.getElementById('scanAutoEnhance').addEventListener('change', syncScanSettings);
+            document.querySelectorAll('.scan-seg').forEach(btn => {
+                btn.addEventListener('click', () => setScanFilter(btn.getAttribute('data-filter')));
+            });
+            setScanFilter('color');
         })();
 
         function setOfflineOptionDisabled(isDisabled) {
@@ -3083,10 +2807,6 @@
         startOfflineStatusPolling();
         refreshAccount();
         document.getElementById('imageInput').addEventListener('change', updateUploadStatus);
-        document.getElementById('scanFormat').addEventListener('change', syncScanSettings);
-        document.getElementById('scanAutoEnhance').addEventListener('change', syncScanSettings);
-        document.getElementById('edgeSensitivity').addEventListener('input', syncScanSettings);
-        document.getElementById('edgeResolution').addEventListener('input', syncScanSettings);
         syncScanSettings();
         updateUploadStatus();
 
