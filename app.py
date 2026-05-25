@@ -373,11 +373,14 @@ def start_ip_poster():
 
 def ip_poster_loop(doc_id: str) -> None:
     interface_name = os.getenv("WIFI_INTERFACE", "wlan0")
+    scheme = (os.getenv("NETGPT_PUBLIC_SCHEME", "http") or "http").strip()
+    public_port = (os.getenv("NETGPT_PUBLIC_PORT", "") or "").strip()
+    port_part = f":{public_port}" if public_port else ""
     writer = DocWriter()
     while True:
         ip_address = get_interface_ip(interface_name)
         if ip_address:
-            writer.replace_document_text(doc_id, f"http://{ip_address}\n")
+            writer.replace_document_text(doc_id, f"{scheme}://{ip_address}{port_part}\n")
         time.sleep(60)
 
 
@@ -458,6 +461,17 @@ def enqueue_offline_job(payload):
         offline_queue.put(job_id)
         position = get_offline_position(job_id)
     return job_id, position
+
+
+def build_ssl_context():
+    cert_path = (os.getenv("NETGPT_SSL_CERT", "") or "").strip()
+    key_path = (os.getenv("NETGPT_SSL_KEY", "") or "").strip()
+    if cert_path and key_path:
+        return (cert_path, key_path)
+    adhoc = (os.getenv("NETGPT_SSL_ADHOC", "") or "").strip().lower()
+    if adhoc in {"1", "true", "yes"}:
+        return "adhoc"
+    return None
 
 
 def get_offline_position(job_id):
@@ -884,4 +898,7 @@ def chat():
 
 if __name__ == '__main__':
     start_offline_worker()
-    app.run(debug=True, host='0.0.0.0', port=80)
+    host = os.getenv("NETGPT_HOST", "0.0.0.0")
+    port = int(os.getenv("NETGPT_PORT", "80"))
+    ssl_context = build_ssl_context()
+    app.run(debug=True, host=host, port=port, ssl_context=ssl_context)
